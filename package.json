@@ -13,11 +13,14 @@
     "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-toolbar": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
+    "@slate-yjs/react": "^1.1.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.8",
     "@udecode/plate": "^48.0.5",
     "@udecode/plate-basic-elements": "^48.0.0",
     "@udecode/plate-basic-marks": "^48.0.0",
+    "@udecode/plate-selection": "^48.0.5",
+    "@udecode/plate-yjs": "^48.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.511.0",
@@ -25,7 +28,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.3.0",
-    "tailwind-scrollbar-hide": "^2.0.0"
+    "tailwind-scrollbar-hide": "^2.0.0",
+    "y-webrtc": "^10.3.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

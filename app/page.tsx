@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useEffect } from "react";
 import type { Value } from "@udecode/plate";
 
 import { BasicElementsPlugin } from "@udecode/plate-basic-elements/react";
@@ -12,7 +13,8 @@ import {
   PlateLeaf,
   usePlateEditor,
 } from "@udecode/plate/react";
-
+import { RemoteCursorOverlay } from "@/components/ui/remote-cursor-overlay";
+import { YjsPlugin } from "@udecode/plate-yjs/react";
 import { BlockquoteElement } from "@/components/ui/blockquote-element";
 import { Editor, EditorContainer } from "@/components/ui/editor";
 import { FixedToolbar } from "@/components/ui/fixed-toolbar";
@@ -21,6 +23,7 @@ import { MarkToolbarButton } from "@/components/ui/mark-toolbar-button";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
 import { ToolbarButton } from "@/components/ui/toolbar"; // Generic toolbar button
 import { createClient } from "@/lib/supabase/client";
+import { useMounted } from "@/hooks/use-mounted";
 
 const initialValue: Value = [
   { type: "h3", children: [{ text: "Title" }] },
@@ -36,9 +39,43 @@ const initialValue: Value = [
 ];
 
 export default function MyEditorPage() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const supabase = createClient();
+  const mounted = useMounted();
   const editor = usePlateEditor({
-    plugins: [BasicElementsPlugin, BasicMarksPlugin], // Add plugins
+    plugins: [
+      BasicElementsPlugin,
+      BasicMarksPlugin,
+      YjsPlugin.configure({
+        // Render remote cursors using the overlay component
+        render: {
+          afterEditable: RemoteCursorOverlay,
+        },
+        // Yjs Plugin Options
+        options: {
+          // Configure local user cursor appearance
+          cursors: {
+            data: {
+              name: "User Name", // Replace with dynamic user name
+              color: "#aabbcc", // Replace with dynamic user color
+            },
+          },
+
+          // Configure providers. All providers share the same Y.Doc and Awareness instance.
+          providers: [
+            // Example: WebRTC provider (can be used alongside Hocuspocus)
+            {
+              type: "webrtc",
+              options: {
+                roomName: "my-document-id", // Must match the document identifier
+                signaling: ["ws://localhost:4444"], // Optional: Your signaling server URLs
+                // peerOpts: { ... } // Optional: WebRTC Peer options (e.g., for TURN servers)
+              },
+            },
+          ],
+        },
+      }),
+    ], // Add plugins
     value: initialValue,
     components: {
       // Element components
@@ -59,6 +96,22 @@ export default function MyEditorPage() {
       underline: (props: PlateLeafProps) => <PlateLeaf {...props} as="u" />,
     },
   });
+
+  useEffect(() => {
+    // Ensure component is mounted and editor is ready
+    if (!mounted) return;
+
+    // Initialize Yjs connection, sync document, and set initial editor state
+    editor.getApi(YjsPlugin).yjs.init({
+      id: "1", // Unique identifier for the Yjs document
+      value: initialValue, // Initial content if the Y.Doc is empty
+    });
+
+    // Clean up: Destroy connection when component unmounts
+    return () => {
+      editor.getApi(YjsPlugin).yjs.destroy();
+    };
+  }, [editor, mounted]);
 
   return (
     <Plate editor={editor}>
