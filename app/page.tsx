@@ -38,10 +38,36 @@ const initialValue: Value = [
   },
 ];
 
+type WebRTCProviderConfig = {
+  type: "webrtc";
+  options: {
+    // WebRTCProviderOptions
+    roomName: string; // Room name for collaboration (must match other clients)
+    signaling?: string[]; // Optional signaling server URLs (defaults to public servers)
+    password?: string; // Optional room password
+    maxConns?: number; // Max WebRTC connections
+    filterBcConns?: boolean; // Filter broadcast connections
+    peerOpts?: Record<string, unknown>; // Options passed to simple-peer (e.g., for ICE/TURN servers)
+  };
+};
+
 export default function MyEditorPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const supabase = createClient();
   const mounted = useMounted();
+  // WebRTCProviderConfig
+  const webRTCProvider: WebRTCProviderConfig = {
+    type: "webrtc",
+    options: {
+      roomName: "my-document-id", // Unique identifier for the document
+      signaling: ["ws://localhost:4444"], // Optional signaling server URLs
+      // password: "your-password", // Optional room password
+      maxConns: 10, // Max WebRTC connections
+      filterBcConns: true, // Filter broadcast connections
+      peerOpts: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }, // STUN server for NAT traversal
+    },
+  };
+
   const editor = usePlateEditor({
     plugins: [
       BasicElementsPlugin,
@@ -63,15 +89,8 @@ export default function MyEditorPage() {
 
           // Configure providers. All providers share the same Y.Doc and Awareness instance.
           providers: [
-            // Example: WebRTC provider (can be used alongside Hocuspocus)
-            {
-              type: "webrtc",
-              options: {
-                roomName: "my-document-id", // Must match the document identifier
-                signaling: ["ws://localhost:4444"], // Optional: Your signaling server URLs
-                // peerOpts: { ... } // Optional: WebRTC Peer options (e.g., for TURN servers)
-              },
-            },
+            // Use the webRTCProvider config
+            webRTCProvider,
           ],
         },
       }),
