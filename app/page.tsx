@@ -20,6 +20,7 @@ import { HeadingElement } from "@/components/ui/heading-element";
 import { MarkToolbarButton } from "@/components/ui/mark-toolbar-button";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
 import { ToolbarButton } from "@/components/ui/toolbar"; // Generic toolbar button
+import { createClient } from "@/lib/supabase/client";
 
 const initialValue: Value = [
   { type: "h3", children: [{ text: "Title" }] },
@@ -35,6 +36,7 @@ const initialValue: Value = [
 ];
 
 export default function MyEditorPage() {
+  const supabase = createClient();
   const editor = usePlateEditor({
     plugins: [BasicElementsPlugin, BasicMarksPlugin], // Add plugins
     value: initialValue,
