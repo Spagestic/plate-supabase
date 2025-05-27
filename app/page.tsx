@@ -15,10 +15,13 @@ import {
 } from "@udecode/plate/react";
 import { RemoteCursorOverlay } from "@/components/ui/remote-cursor-overlay";
 import { YjsPlugin } from "@udecode/plate-yjs/react";
+import * as Y from "yjs";
+import { Awareness } from "y-protocols/awareness";
 import { BlockquoteElement } from "@/components/ui/blockquote-element";
 import { Editor, EditorContainer } from "@/components/ui/editor";
 import { FixedToolbar } from "@/components/ui/fixed-toolbar";
 import { HeadingElement } from "@/components/ui/heading-element";
+
 import { MarkToolbarButton } from "@/components/ui/mark-toolbar-button";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
 import { ToolbarButton } from "@/components/ui/toolbar"; // Generic toolbar button
@@ -50,6 +53,18 @@ type WebRTCProviderConfig = {
     peerOpts?: Record<string, unknown>; // Options passed to simple-peer (e.g., for ICE/TURN servers)
   };
 };
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+interface UnifiedProvider {
+  awareness: Awareness; // Must use the shared Awareness instance
+  document: Y.Doc; // Must use the shared Y.Doc instance
+  type: string; // Unique type identifier (e.g., 'indexeddb')
+  connect: () => void; // Logic to establish connection/load data
+  destroy: () => void; // Cleanup logic (called by editor.api.yjs.destroy)
+  disconnect: () => void; // Logic to disconnect/save data
+  isConnected: boolean; // Provider's connection status
+  isSynced: boolean; // Provider's data sync status
+}
 
 export default function MyEditorPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
