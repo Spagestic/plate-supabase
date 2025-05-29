@@ -16,6 +16,7 @@
     "@slate-yjs/react": "^1.1.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.8",
+    "@types/debug": "^4.1.12",
     "@udecode/plate": "^48.0.5",
     "@udecode/plate-basic-elements": "^48.0.0",
     "@udecode/plate-basic-marks": "^48.0.0",
@@ -23,6 +24,7 @@
     "@udecode/plate-yjs": "^48.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "debug": "^4.4.1",
     "lucide-react": "^0.511.0",
     "next": "15.3.2",
     "quill": "^2.0.3",
@@ -33,6 +35,7 @@
     "slate-react": "^0.114.2",
     "tailwind-merge": "^3.3.0",
     "tailwind-scrollbar-hide": "^2.0.0",
+    "y-supabase": "^0.0.4-7-alpha",
     "y-webrtc": "^10.3.0"
   },
   "devDependencies": {
