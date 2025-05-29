@@ -8,6 +8,7 @@
         "@radix-ui/react-separator": "^1.1.7",
         "@radix-ui/react-toolbar": "^1.1.10",
         "@radix-ui/react-tooltip": "^1.2.7",
+        "@slate-yjs/core": "^1.0.2",
         "@slate-yjs/react": "^1.1.0",
         "@supabase/ssr": "^0.6.1",
         "@supabase/supabase-js": "^2.49.8",
@@ -32,6 +33,7 @@
         "tailwind-scrollbar-hide": "^2.0.0",
         "y-supabase": "^0.0.4-7-alpha",
         "y-webrtc": "^10.3.0",
+        "yjs": "^13.6.27",
       },
       "devDependencies": {
         "@eslint/eslintrc": "^3",
