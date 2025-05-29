@@ -9,7 +9,7 @@ import { withHistory } from "slate-history";
 // Define the initial value for the editor
 const initialValue: Descendant[] = [
   {
-    children: [{ text: "A line of text in a paragraph." }],
+    children: [{ text: "" }],
   },
 ];
 
