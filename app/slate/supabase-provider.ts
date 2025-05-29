@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-wrapper-object-types */
 import debug from "debug";
 import { EventEmitter } from "events";
 import * as Y from "yjs";
@@ -13,10 +14,14 @@ export interface SupabaseProviderConfig {
   channel: string;
   tableName: string;
   columnName: string;
+  aggregationViewName: string;
+  aggregationColumnName: string;
+  aggregationIdName?: string;
   idName?: string;
-  id: string | number;
+  id: string | number | BigInt;
   awareness?: awarenessProtocol.Awareness;
   resyncInterval?: number | false;
+  saveInterval?: number;
 }
 
 export default class SupabaseProvider extends EventEmitter {
@@ -24,8 +29,11 @@ export default class SupabaseProvider extends EventEmitter {
   public connected = false;
   private channel: RealtimeChannel | null = null;
 
+  private previousSnapshot: Uint8Array | null = null;
+
   private _synced: boolean = false;
   private resyncInterval: NodeJS.Timeout | undefined;
+  private debounceUpdate: () => void;
   protected logger: debug.Debugger;
   public readonly id: number;
 
@@ -44,7 +52,7 @@ export default class SupabaseProvider extends EventEmitter {
         this.isOnline()
       );
       this.emit("message", update);
-      this.save();
+      this.debounceUpdate();
     }
   }
 
@@ -58,46 +66,88 @@ export default class SupabaseProvider extends EventEmitter {
   }
 
   removeSelfFromAwarenessOnUnload() {
-    awarenessProtocol.removeAwarenessStates(
-      this.awareness,
-      [this.doc.clientID],
-      "window unload"
-    );
+    if (this.doc != null) {
+      awarenessProtocol.removeAwarenessStates(
+        this.awareness,
+        [this.doc.clientID],
+        "window unload"
+      );
+    }
   }
 
   async save() {
-    const content = Array.from(Y.encodeStateAsUpdate(this.doc));
+    const currentSnapshot = Y.encodeStateAsUpdateV2(this.doc);
+    this.logger("saving: previousSnapshot", this.previousSnapshot);
+    this.logger("saving: currentSnapshot", currentSnapshot);
 
+    let diff;
+    if (this.previousSnapshot == null) {
+      diff = Y.encodeStateAsUpdateV2(this.doc);
+    } else {
+      diff = Y.diffUpdateV2(currentSnapshot, this.previousSnapshot);
+    }
+
+    this.logger("saving: diff", diff);
+    const content = Array.from(diff);
+
+    if (JSON.stringify([0, 0]) === JSON.stringify(content)) {
+      return;
+    }
+    const upsertRecord = {
+      [this.config.idName || "id"]: this.config.id.toString(),
+      [this.config.columnName]: content,
+    } as any;
+    this.logger("saving: upsertRecord", upsertRecord);
     const { error } = await this.supabase
       .from(this.config.tableName)
-      .update({ [this.config.columnName]: content })
-      .eq(this.config.idName || "id", this.config.id);
+      .insert(upsertRecord);
+    // .eq(this.config.idName || 'id', this.config.id);
+    // .eq(this.config.idName || 'id', this.config.id);
 
     if (error) {
       throw error;
     }
 
+    this.updatePreviousSnapshot();
     this.emit("save", this.version);
   }
 
   private async onConnect() {
     this.logger("connected");
 
+    this.logger("loading: starting");
     const { data, error, status } = await this.supabase
-      .from(this.config.tableName)
-      .select<string, { [key: string]: number[] }>(`${this.config.columnName}`)
-      .eq(this.config.idName || "id", this.config.id)
-      .single();
+      .from(this.config.aggregationViewName)
+      .select<string, { [key: string]: number[][] }>(
+        `${this.config.aggregationColumnName}`
+      )
+      .eq(this.config.aggregationIdName || "id", this.config.id)
+      .maybeSingle();
 
     this.logger("retrieved data from supabase", status);
 
-    if (data && data[this.config.columnName]) {
+    this.logger("loading: data", data);
+    if (data && data[this.config.aggregationColumnName]) {
       this.logger("applying update to yjs");
-      try {
-        this.applyUpdate(Uint8Array.from(data[this.config.columnName]));
-      } catch (error) {
-        this.logger(error);
+      const diffs = data[this.config.aggregationColumnName];
+      this.logger("loading: diffs", diffs);
+
+      if (diffs.length > 0) {
+        try {
+          this.logger("applying update inner to yjs");
+          // this.applyUpdate(Uint8Array.from(diff));
+          Y.applyUpdateV2(
+            this.doc,
+            Y.mergeUpdatesV2(diffs.map((diff) => Uint8Array.from(diff)))
+          );
+          this.updatePreviousSnapshot();
+        } catch (error) {
+          this.logger("applying resulted in error", error);
+        }
+
+        this.version++;
       }
+      // this.applyUpdate(Uint8Array.from(data[this.config.columnName]));
     }
 
     this.logger("setting connected flag to true");
@@ -117,6 +167,10 @@ export default class SupabaseProvider extends EventEmitter {
   private applyUpdate(update: Uint8Array, origin?: any) {
     this.version++;
     Y.applyUpdate(this.doc, update, origin);
+  }
+
+  private updatePreviousSnapshot() {
+    this.previousSnapshot = Y.encodeStateVector(this.doc);
   }
 
   private disconnect() {
@@ -165,13 +219,28 @@ export default class SupabaseProvider extends EventEmitter {
     }
   }
 
+  private debounce<T extends (...args: any[]) => any>(func: T, wait: number) {
+    let timeout: ReturnType<typeof setTimeout> | null;
+    return (...args: Parameters<T>): Promise<ReturnType<T>> => {
+      const later = () => {
+        timeout = null;
+        return func(...args);
+      };
+      clearTimeout(timeout!);
+      timeout = setTimeout(later, wait);
+      return new Promise((resolve) => {
+        if (!timeout) {
+          resolve(func(...args));
+        }
+      });
+    };
+  }
   constructor(
     private doc: Y.Doc,
     private supabase: SupabaseClient,
     private config: SupabaseProviderConfig
   ) {
     super();
-
     this.awareness =
       this.config.awareness || new awarenessProtocol.Awareness(doc);
 
@@ -188,6 +257,11 @@ export default class SupabaseProvider extends EventEmitter {
 
     this.logger("constructor initializing");
     this.logger("connecting to Supabase Realtime", doc.guid);
+
+    this.debounceUpdate = this.debounce(() => {
+      this.logger("saving document");
+      this.save();
+    }, this.config.saveInterval || 5000);
 
     if (
       this.config.resyncInterval ||
@@ -230,6 +304,9 @@ export default class SupabaseProvider extends EventEmitter {
         });
     });
     this.on("message", (update) => {
+      console.log("Got update");
+      Y.logUpdate(update);
+
       if (this.channel)
         this.channel.send({
           type: "broadcast",
