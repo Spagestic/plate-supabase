@@ -193,9 +193,7 @@ export default function SlateEditorPage() {
       });
 
       setActiveUsers(users);
-    });
-
-    // Handle document updates via broadcast
+    }); // Handle document updates via broadcast
     channel.on("broadcast", { event: "yjs-update" }, (payload) => {
       // Skip if this is our own update
       if (payload.payload.sender === yDoc.clientID) return;
@@ -212,6 +210,49 @@ export default function SlateEditorPage() {
         console.log("Applied Yjs update successfully");
       } catch (error) {
         console.error("Error applying Yjs update:", error);
+      }
+    });
+
+    // Handle state requests from new clients
+    channel.on("broadcast", { event: "request-yjs-state" }, (payload) => {
+      // Skip if this is our own request
+      if (payload.payload.sender === yDoc.clientID) return;
+
+      // Send current state to the requesting client
+      const currentState = Y.encodeStateAsUpdate(yDoc);
+      const base64State = btoa(String.fromCharCode(...currentState));
+
+      channel.send({
+        type: "broadcast",
+        event: "yjs-state-response",
+        payload: {
+          state: base64State,
+          sender: yDoc.clientID,
+          recipient: payload.payload.sender,
+        },
+      });
+    });
+
+    // Handle state responses
+    channel.on("broadcast", { event: "yjs-state-response" }, (payload) => {
+      // Only process if this response is for us
+      if (payload.payload.recipient !== yDoc.clientID) return;
+
+      try {
+        console.log(
+          "Received state response from client:",
+          payload.payload.sender
+        );
+        // Apply the received state
+        const state = new Uint8Array(
+          atob(payload.payload.state)
+            .split("")
+            .map((c) => c.charCodeAt(0))
+        );
+        Y.applyUpdate(yDoc, state, "remote");
+        console.log("Applied state response successfully");
+      } catch (error) {
+        console.error("Error applying state response:", error);
       }
     }); // Handle awareness updates via broadcast
     channel.on("broadcast", { event: "awareness-update" }, (payload) => {
@@ -233,9 +274,7 @@ export default function SlateEditorPage() {
       } catch (error) {
         console.error("Error applying awareness update:", error);
       }
-    });
-
-    // Listen to Yjs document updates to broadcast them
+    }); // Listen to Yjs document updates to broadcast them
     const updateHandler = (update: Uint8Array, origin: any) => {
       // Only broadcast if the update didn't come from remote
       if (origin !== "remote") {
@@ -306,6 +345,15 @@ export default function SlateEditorPage() {
         awareness.setLocalStateField("user", {
           name: username,
           color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`,
+        });
+
+        // Request current state from other clients (if any)
+        channel.send({
+          type: "broadcast",
+          event: "request-yjs-state",
+          payload: {
+            sender: yDoc.clientID,
+          },
         });
 
         setConnected(true);
