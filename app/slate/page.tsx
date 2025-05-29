@@ -95,26 +95,6 @@ export default function SlateEditorPage() {
   return (
     <div className="p-4 max-w-3xl mx-auto">
       <Slate editor={editor} initialValue={initialValue}>
-        <div className="mb-2 flex gap-2">
-          <button
-            className="border rounded px-2 py-1 hover:bg-gray-100"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              CustomEditor.toggleBoldMark(editor);
-            }}
-          >
-            Bold
-          </button>
-          <button
-            className="border rounded px-2 py-1 hover:bg-gray-100"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              CustomEditor.toggleCodeBlock(editor);
-            }}
-          >
-            Code Block
-          </button>
-        </div>
         <Editable
           className="min-h-[200px] border rounded p-2"
           renderElement={renderElement}
