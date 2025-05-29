@@ -22,6 +22,7 @@ export default function Editor() {
   const editorRef = useRef<HTMLDivElement>(null);
   const quillRef = useRef<Quill | null>(null);
   const ydocRef = useRef<Y.Doc | null>(null);
+  const ytextRef = useRef<Y.Text | null>(null);
   // Import the correct type for RealtimeChannel from Supabase
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isLocalChangeRef = useRef(false);
@@ -66,14 +67,13 @@ export default function Editor() {
     // Set initial empty content
     quill.setText("");
 
-    quillRef.current = quill;
-
-    // Create a YJS document
+    quillRef.current = quill; // Create a YJS document
     const ydoc = new Y.Doc();
     ydocRef.current = ydoc;
 
     // Create a shared text type
     const ytext = ydoc.getText("quill");
+    ytextRef.current = ytext;
 
     // Set up Supabase channel
     const channel = supabase.channel(CHANNEL);
@@ -94,32 +94,116 @@ export default function Editor() {
       });
 
       setActiveUsers(users);
-    });
-
-    // Handle document updates
+    }); // Handle document updates
     channel.on("broadcast", { event: "document-update" }, (payload) => {
       // Skip if this is our own update
       if (payload.payload.sender === ydoc.clientID) return;
 
-      // Apply YJS update
-      const update = new Uint8Array(Object.values(payload.payload.update));
+      try {
+        // Apply YJS update - payload.update should be base64 encoded
+        const update = new Uint8Array(
+          atob(payload.payload.update)
+            .split("")
+            .map((c) => c.charCodeAt(0))
+        );
 
-      // Set flag to prevent echo
-      isLocalChangeRef.current = true;
+        // Apply update to YJS document with "remote" origin
+        Y.applyUpdate(ydoc, update, "remote");
+      } catch (error) {
+        console.error("Error applying document update:", error);
+      }
+    });
 
-      // Apply update to YJS document
-      Y.applyUpdate(ydoc, update);
+    // Handle state requests from new clients
+    channel.on("broadcast", { event: "request-state" }, (payload) => {
+      // Skip if this is our own request
+      if (payload.payload.sender === ydoc.clientID) return;
 
-      // Update Quill with the new content
+      // Send current state to the requesting client
+      const currentState = Y.encodeStateAsUpdate(ydoc);
+      const base64State = btoa(String.fromCharCode(...currentState));
+
+      channel.send({
+        type: "broadcast",
+        event: "state-response",
+        payload: {
+          state: base64State,
+          sender: ydoc.clientID,
+          recipient: payload.payload.sender,
+        },
+      });
+    });
+
+    // Handle state responses
+    channel.on("broadcast", { event: "state-response" }, (payload) => {
+      // Only process if this response is for us
+      if (payload.payload.recipient !== ydoc.clientID) return;
+
+      try {
+        // Apply the received state
+        const state = new Uint8Array(
+          atob(payload.payload.state)
+            .split("")
+            .map((c) => c.charCodeAt(0))
+        ); // Set flag to prevent echo
+        isLocalChangeRef.current = true;
+
+        // Apply state to YJS document with "remote" origin
+        Y.applyUpdate(ydoc, state, "remote");
+
+        // Update Quill with the new content
+        const newContent = ytext.toString();
+        quill.setText(newContent);
+        isLocalChangeRef.current = false;
+      } catch (error) {
+        console.error("Error applying state response:", error);
+      }
+    });
+
+    // Listen to YJS document updates to broadcast them
+    const updateHandler = (update: Uint8Array, origin: any) => {
+      // Only broadcast if the update didn't come from remote
+      if (origin !== "remote") {
+        console.log(
+          "Broadcasting YJS update, origin:",
+          origin,
+          "size:",
+          update.length
+        );
+        // Convert Uint8Array to base64 string for JSON serialization
+        const base64Update = btoa(String.fromCharCode(...update));
+
+        // Send update via Supabase
+        channel.send({
+          type: "broadcast",
+          event: "document-update",
+          payload: {
+            update: base64Update,
+            sender: ydoc.clientID,
+          },
+        });
+      } else {
+        console.log("Skipping broadcast for remote update");
+      }
+    };
+
+    // Listen to YJS text changes to update Quill
+    const ytextObserver = () => {
+      if (isLocalChangeRef.current) return;
+
       const newContent = ytext.toString();
       const currentContent = quill.getText();
 
       if (newContent !== currentContent) {
+        isLocalChangeRef.current = true;
         quill.setText(newContent);
+        isLocalChangeRef.current = false;
       }
+    };
 
-      isLocalChangeRef.current = false;
-    });
+    // Set up YJS listeners
+    ydoc.on("update", updateHandler);
+    ytext.observe(ytextObserver);
 
     // Subscribe to channel
     channel.subscribe(async (status) => {
@@ -131,43 +215,36 @@ export default function Editor() {
           online_at: new Date().getTime(),
         });
 
+        // Request current state from other clients (if any)
+        channel.send({
+          type: "broadcast",
+          event: "request-state",
+          payload: {
+            sender: ydoc.clientID,
+          },
+        });
+
         setIsConnected(true);
       }
-    });
-
-    // Listen for Quill text changes
+    }); // Listen for Quill text changes
     quill.on("text-change", (delta, oldDelta, source) => {
       if (source !== "user" || isLocalChangeRef.current) return;
 
-      // Update YJS document
+      // Update YJS document directly - this will trigger the updateHandler
       ytext.delete(0, ytext.length);
       ytext.insert(0, quill.getText());
-
-      // Broadcast update
-      const update = Y.encodeStateAsUpdate(ydoc);
-
-      // Convert to object for JSON serialization
-      const updateObj: Record<number, number> = {};
-      update.forEach((value, index) => {
-        updateObj[index] = value;
-      });
-
-      // Send update via Supabase
-      channel.send({
-        type: "broadcast",
-        event: "document-update",
-        payload: {
-          update: updateObj,
-          sender: ydoc.clientID,
-        },
-      });
-    });
-
-    // Clean up
+    }); // Clean up
     return () => {
+      // Remove YJS listeners
+      ydoc.off("update", updateHandler);
+      ytext.unobserve(ytextObserver);
+
       if (channel) {
         channel.unsubscribe();
       }
+
+      // Destroy YJS document
+      ydoc.destroy();
     };
   }, [supabase]);
 
