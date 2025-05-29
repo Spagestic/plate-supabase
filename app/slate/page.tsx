@@ -10,7 +10,11 @@ import { withCursors, withYjs, YjsEditor } from "@slate-yjs/core";
 import { useRemoteCursorOverlayPositions } from "@slate-yjs/react";
 import { createClient } from "@/lib/supabase/client";
 import * as Y from "yjs";
-import { Awareness } from "y-protocols/awareness";
+import {
+  Awareness,
+  encodeAwarenessUpdate,
+  applyAwarenessUpdate,
+} from "y-protocols/awareness";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 // Channel name - using a unique ID to ensure both instances connect to the same channel
@@ -59,7 +63,7 @@ function Cursors({ children }: { children: React.ReactNode }) {
   });
 
   return (
-    <div className="cursors relative" ref={containerRef as any}>
+    <div className="cursors" ref={containerRef as any}>
       {children}
       {cursors.map((cursor) => (
         <Selection key={cursor.clientId} {...cursor} />
@@ -82,7 +86,7 @@ function Selection({ data, selectionRects, caretPosition }: any) {
       {selectionRects.map((position: any, i: number) => (
         <div
           style={{ ...selectionStyle, ...position }}
-          className="absolute pointer-events-none opacity-20"
+          className="selection"
           key={i}
         />
       ))}
@@ -103,11 +107,8 @@ function Caret({ caretPosition, data }: any) {
   };
 
   return (
-    <div style={caretStyle} className="absolute w-0.5">
-      <div
-        className="absolute text-xs text-white whitespace-nowrap top-0 rounded-md rounded-bl-none px-1.5 py-0.5 pointer-events-none"
-        style={labelStyle}
-      >
+    <div style={caretStyle} className="caretMarker">
+      <div className="caret" style={labelStyle}>
         {data?.name}
       </div>
     </div>
@@ -117,12 +118,12 @@ function Caret({ caretPosition, data }: any) {
 // Define custom editor commands
 const CustomEditor = {
   isBoldMarkActive(editor: any) {
-    const marks = editor.marks;
-    return marks ? marks.bold === true : false;
+    const marks = Editor.marks(editor);
+    return marks ? (marks as any).bold === true : false;
   },
 
   isCodeBlockActive(editor: any) {
-    const [match] = editor.nodes({
+    const [match] = Editor.nodes(editor, {
       match: (n: any) => n.type === "code",
     });
 
@@ -132,18 +133,17 @@ const CustomEditor = {
   toggleBoldMark(editor: any) {
     const isActive = CustomEditor.isBoldMarkActive(editor);
     if (isActive) {
-      editor.removeMark("bold");
+      Editor.removeMark(editor, "bold");
     } else {
-      editor.addMark("bold", true);
+      Editor.addMark(editor, "bold", true);
     }
   },
 
   toggleCodeBlock(editor: any) {
     const isActive = CustomEditor.isCodeBlockActive(editor);
-    editor.setNodes(
-      { type: isActive ? "paragraph" : "code" },
-      { match: (n: any) => editor.isBlock(n) }
-    );
+    Transforms.setNodes(editor, { type: isActive ? null : "code" } as any, {
+      match: (n: any) => Editor.isBlock(editor, n),
+    });
   },
 };
 
@@ -168,11 +168,11 @@ export default function SlateEditorPage() {
     )}`;
     setUsername(randomName);
   }, []);
-
   // Set up Yjs provider and document
   useEffect(() => {
     const yDoc = new Y.Doc();
     const sharedDoc = yDoc.get("slate", Y.XmlText);
+    const awareness = new Awareness(yDoc);
 
     // Set up Supabase channel as our "provider"
     const channel = supabase.channel(CHANNEL);
@@ -193,7 +193,9 @@ export default function SlateEditorPage() {
       });
 
       setActiveUsers(users);
-    }); // Handle document updates via broadcast
+    });
+
+    // Handle document updates via broadcast
     channel.on("broadcast", { event: "yjs-update" }, (payload) => {
       // Skip if this is our own update
       if (payload.payload.sender === yDoc.clientID) return;
@@ -211,7 +213,29 @@ export default function SlateEditorPage() {
       } catch (error) {
         console.error("Error applying Yjs update:", error);
       }
-    }); // Listen to Yjs document updates to broadcast them
+    }); // Handle awareness updates via broadcast
+    channel.on("broadcast", { event: "awareness-update" }, (payload) => {
+      // Skip if this is our own update
+      if (payload.payload.sender === yDoc.clientID) return;
+
+      try {
+        console.log(
+          "Received awareness update from client:",
+          payload.payload.sender
+        );
+        const update = new Uint8Array(
+          atob(payload.payload.update)
+            .split("")
+            .map((c) => c.charCodeAt(0))
+        );
+        applyAwarenessUpdate(awareness, update, "remote");
+        console.log("Applied awareness update successfully");
+      } catch (error) {
+        console.error("Error applying awareness update:", error);
+      }
+    });
+
+    // Listen to Yjs document updates to broadcast them
     const updateHandler = (update: Uint8Array, origin: any) => {
       // Only broadcast if the update didn't come from remote
       if (origin !== "remote") {
@@ -236,11 +260,39 @@ export default function SlateEditorPage() {
       } else {
         console.log("Skipping broadcast for remote update");
       }
+    }; // Listen to awareness updates to broadcast them
+    const awarenessUpdateHandler = (
+      {
+        added,
+        updated,
+        removed,
+      }: { added: number[]; updated: number[]; removed: number[] },
+      origin: any
+    ) => {
+      if (origin !== "remote") {
+        const changedClients = added.concat(updated, removed);
+        if (changedClients.length > 0) {
+          console.log(
+            "Broadcasting awareness update for clients:",
+            changedClients
+          );
+          const update = encodeAwarenessUpdate(awareness, changedClients);
+          const base64Update = btoa(String.fromCharCode(...update));
+
+          channel.send({
+            type: "broadcast",
+            event: "awareness-update",
+            payload: {
+              update: base64Update,
+              sender: yDoc.clientID,
+            },
+          });
+        }
+      }
     };
 
     yDoc.on("update", updateHandler);
-
-    // Subscribe to channel
+    awareness.on("update", awarenessUpdateHandler); // Subscribe to channel
     channel.subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
         // Track presence
@@ -249,17 +301,27 @@ export default function SlateEditorPage() {
           username: username,
           online_at: new Date().getTime(),
         });
+
+        // Set local awareness state for cursor information
+        awareness.setLocalStateField("user", {
+          name: username,
+          color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`,
+        });
+
         setConnected(true);
       }
     });
+
     setSharedType(sharedDoc);
-    setProvider({ awareness: new Awareness(yDoc) });
+    setProvider({ awareness });
 
     return () => {
       yDoc.off("update", updateHandler);
+      awareness.off("update", awarenessUpdateHandler);
       if (channel) {
         channel.unsubscribe();
       }
+      awareness.destroy();
       yDoc.destroy();
     };
   }, [supabase, username]);
