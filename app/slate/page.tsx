@@ -1,50 +1,60 @@
-"use client";
-
-import "./styles.css";
 import React from "react";
-import { Slate, Editable } from "slate-react";
-import { initialValue } from "@/constants/slate";
-import { ActiveUsers, Cursors, useRenderFunctions } from "@/components/slate";
-import { useSlateCollaboration, useKeyboardShortcuts } from "@/hooks/slate";
+import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
+import CreateDocumentBtn from "./components/create-document-btn";
+import DeleteDocumentBtn from "./components/delete-document-btn";
 
-export default function SlateEditorPage() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { editor, username, activeUsers, connected, sharedType, provider } =
-    useSlateCollaboration();
-
-  const { renderElement, renderLeaf } = useRenderFunctions();
-  const { handleKeyDown } = useKeyboardShortcuts(editor);
-
-  if (!connected || !sharedType || !provider) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-background text-foreground">
-        <div>Loading collaborative editor...</div>
-      </div>
-    );
-  }
-
+export default async function page() {
+  const supabase = await createClient();
+  const { data: documents } = await supabase.from("document").select("*");
   return (
-    <div className="flex flex-col h-screen antialiased bg-background text-foreground">
-      {/* Header */}
-      <ActiveUsers activeUsers={activeUsers} />
-
-      {/* Main content */}
-      <div className="flex-1 p-12">
-        <div className="max-w-4xl mx-auto h-full">
-          <div className="h-full text-muted-foreground">
-            <Slate editor={editor} initialValue={initialValue}>
-              <Cursors>
-                <Editable
-                  className="min-h-full px-4 py-8 focus:outline-none text-muted-foreground text-base overflow-auto"
-                  renderElement={renderElement}
-                  renderLeaf={renderLeaf}
-                  onKeyDown={handleKeyDown}
-                />
-              </Cursors>
-            </Slate>
-          </div>
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Your Documents</h1>
         </div>
+        <CreateDocumentBtn />
       </div>
+
+      {documents?.length === 0 ? (
+        <div className="text-center py-12 bg-muted/20 rounded-lg">
+          <p className="text-lg text-muted-foreground">No documents yet</p>
+          <p className="mt-2 text-muted-foreground">
+            Create a new document to get started
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+          {documents?.map((doc) => (
+            <div
+              key={doc.id}
+              className="flex flex-col bg-background border rounded-lg shadow-sm hover:shadow-md transition-shadow"
+            >
+              <Link
+                href={`/slate/${doc.id}`}
+                className="flex-1 p-5 flex flex-col justify-between"
+              >
+                <div>
+                  <h2 className="font-semibold text-lg truncate">
+                    {doc.title || "Untitled Document"}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ID: {doc.id.substring(0, 8)}...
+                  </p>
+                </div>
+                {doc.updated_at && (
+                  <div className="text-xs text-muted-foreground mt-4">
+                    Last edited: {new Date(doc.updated_at).toLocaleString()}
+                  </div>
+                )}
+              </Link>
+              <div className="p-3 border-t flex justify-end">
+                <DeleteDocumentBtn id={doc.id} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,11 +1,11 @@
 import React from "react";
-import { ActiveUser } from "@/types/slate";
+import type { ActiveUser } from "@/types/editor";
 
-interface ActiveUsersProps {
+interface UserListProps {
   activeUsers: ActiveUser[];
 }
 
-export const ActiveUsers: React.FC<ActiveUsersProps> = ({ activeUsers }) => {
+const UserList: React.FC<UserListProps> = ({ activeUsers }) => {
   return (
     <div className="flex gap-2 flex-wrap absolute top-4 right-4">
       {activeUsers.map((user, index) => (
@@ -20,3 +20,5 @@ export const ActiveUsers: React.FC<ActiveUsersProps> = ({ activeUsers }) => {
     </div>
   );
 };
+
+export default UserList;

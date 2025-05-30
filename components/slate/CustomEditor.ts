@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Editor, Transforms } from "slate";
 
-export const CustomEditor = {
-  isBoldMarkActive(editor: Editor) {
+const CustomEditor = {
+  isBoldMarkActive(editor: any) {
     const marks = Editor.marks(editor);
     return marks ? (marks as any).bold === true : false;
   },
 
-  isCodeBlockActive(editor: Editor) {
+  isCodeBlockActive(editor: any) {
     const [match] = Editor.nodes(editor, {
       match: (n: any) => n.type === "code",
     });
@@ -15,7 +15,7 @@ export const CustomEditor = {
     return !!match;
   },
 
-  toggleBoldMark(editor: Editor) {
+  toggleBoldMark(editor: any) {
     const isActive = CustomEditor.isBoldMarkActive(editor);
     if (isActive) {
       Editor.removeMark(editor, "bold");
@@ -24,10 +24,12 @@ export const CustomEditor = {
     }
   },
 
-  toggleCodeBlock(editor: Editor) {
+  toggleCodeBlock(editor: any) {
     const isActive = CustomEditor.isCodeBlockActive(editor);
     Transforms.setNodes(editor, { type: isActive ? null : "code" } as any, {
       match: (n: any) => Editor.isBlock(editor, n),
     });
   },
 };
+
+export default CustomEditor;
