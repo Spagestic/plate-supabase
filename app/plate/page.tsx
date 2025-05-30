@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useEffect } from "react";
 import type { Value } from "@udecode/plate";
+import * as Y from "yjs";
+import { Awareness } from "y-protocols/awareness";
 
 import { BasicElementsPlugin } from "@udecode/plate-basic-elements/react";
 import { BasicMarksPlugin } from "@udecode/plate-basic-marks/react";
@@ -15,8 +17,6 @@ import {
 } from "@udecode/plate/react";
 import { RemoteCursorOverlay } from "@/components/ui/remote-cursor-overlay";
 import { YjsPlugin } from "@udecode/plate-yjs/react";
-import * as Y from "yjs";
-import { Awareness } from "y-protocols/awareness";
 import { BlockquoteElement } from "@/components/ui/blockquote-element";
 import { Editor, EditorContainer } from "@/components/ui/editor";
 import { FixedToolbar } from "@/components/ui/fixed-toolbar";
@@ -24,9 +24,9 @@ import { HeadingElement } from "@/components/ui/heading-element";
 
 import { MarkToolbarButton } from "@/components/ui/mark-toolbar-button";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
-import { ToolbarButton } from "@/components/ui/toolbar"; // Generic toolbar button
+import { ToolbarButton } from "@/components/ui/toolbar";
 import { useMounted } from "@/hooks/use-mounted";
-import { SupabaseProvider } from "@/lib/providers/unified-providers"; // Import your SupabaseProvider
+import { SupabaseProvider } from "@/lib/providers/unified-providers";
 
 const initialValue: Value = [
   { type: "h3", children: [{ text: "Title" }] },
@@ -41,17 +41,18 @@ const initialValue: Value = [
   },
 ];
 
-// Create shared Y.Doc and Awareness instances
-const ydoc = new Y.Doc();
-const awareness = new Awareness(ydoc);
-
 // Example: Instantiate your SupabaseProvider
 // You'll need to provide actual values for channelName, username, and documentId
 const documentId = "5eb6f176-fc34-45a8-bdca-abf08a9118f5"; // Or get this dynamically
 const username = `User-${Math.floor(Math.random() * 100)}`; // Or get this from auth
 const channelName = `plate-editor-${documentId}`;
 
-const supabaseProviderInstance = new SupabaseProvider(
+// Create Y.Doc and Awareness instances that we'll share between YjsPlugin and our custom provider
+const ydoc = new Y.Doc();
+const awareness = new Awareness(ydoc);
+
+// Create our custom SupabaseProvider with the shared instances
+const supabaseProvider = new SupabaseProvider(
   ydoc,
   awareness,
   channelName,
@@ -71,25 +72,17 @@ export default function MyEditorPage() {
           afterEditable: RemoteCursorOverlay,
         },
         options: {
-          ydoc, // Pass the shared ydoc
-          awareness, // Pass the shared awareness
+          // Provide our own Y.Doc and Awareness instances
+          ydoc: ydoc,
+          awareness: awareness,
           cursors: {
             data: {
               name: username, // Use the same username
               color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
             },
           },
-          providers: [
-            supabaseProviderInstance, // Pass your instantiated SupabaseProvider
-            // You can still add other providers here if needed, e.g., WebRTC
-            // {
-            //   type: "webrtc",
-            //   options: {
-            //     roomName: documentId,
-            //     signaling: ["ws://localhost:4444"],
-            //   },
-            // },
-          ],
+          // Pass our custom provider instance
+          providers: [supabaseProvider],
           onConnect: ({ type }) =>
             console.log(`[YjsPlugin] Provider ${type} connected!`),
           onDisconnect: ({ type }) =>
@@ -122,7 +115,6 @@ export default function MyEditorPage() {
       underline: (props: PlateLeafProps) => <PlateLeaf {...props} as="u" />,
     },
   });
-
   useEffect(() => {
     // Ensure component is mounted and editor is ready
     if (!mounted) {
