@@ -26,6 +26,7 @@ import { MarkToolbarButton } from "@/components/ui/mark-toolbar-button";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
 import { ToolbarButton } from "@/components/ui/toolbar"; // Generic toolbar button
 import { useMounted } from "@/hooks/use-mounted";
+import { SupabaseProvider } from "@/lib/providers/unified-providers"; // Import your SupabaseProvider
 
 const initialValue: Value = [
   { type: "h3", children: [{ text: "Title" }] },
@@ -44,6 +45,20 @@ const initialValue: Value = [
 const ydoc = new Y.Doc();
 const awareness = new Awareness(ydoc);
 
+// Example: Instantiate your SupabaseProvider
+// You'll need to provide actual values for channelName, username, and documentId
+const documentId = "5eb6f176-fc34-45a8-bdca-abf08a9118f5"; // Or get this dynamically
+const username = `User-${Math.floor(Math.random() * 100)}`; // Or get this from auth
+const channelName = `plate-editor-${documentId}`;
+
+const supabaseProviderInstance = new SupabaseProvider(
+  ydoc,
+  awareness,
+  channelName,
+  username,
+  documentId
+);
+
 export default function MyEditorPage() {
   const mounted = useMounted();
 
@@ -56,24 +71,25 @@ export default function MyEditorPage() {
           afterEditable: RemoteCursorOverlay,
         },
         options: {
-          ydoc,
-          awareness,
+          ydoc, // Pass the shared ydoc
+          awareness, // Pass the shared awareness
           cursors: {
             data: {
-              name: `User-${Math.floor(Math.random() * 100)}`,
+              name: username, // Use the same username
               color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
             },
           },
           providers: [
-            {
-              type: "webrtc",
-              options: {
-                roomName: "my-document-id", // Must match the document identifier
-                signaling: ["ws://localhost:4444"], // Optional: Your signaling server URLs
-                // peerOpts: { ... } // Optional: WebRTC Peer options (e.g., for TURN servers)
-              },
-            },
-          ], // No providers
+            supabaseProviderInstance, // Pass your instantiated SupabaseProvider
+            // You can still add other providers here if needed, e.g., WebRTC
+            // {
+            //   type: "webrtc",
+            //   options: {
+            //     roomName: documentId,
+            //     signaling: ["ws://localhost:4444"],
+            //   },
+            // },
+          ],
           onConnect: ({ type }) =>
             console.log(`[YjsPlugin] Provider ${type} connected!`),
           onDisconnect: ({ type }) =>
@@ -118,7 +134,7 @@ export default function MyEditorPage() {
     // Initialize Yjs connection, sync document, and set initial editor state
     console.log("[MyEditorPage] useEffect: Calling yjs.init().");
     editor.getApi(YjsPlugin).yjs.init({
-      id: "plate-collaboration-room-1", // Unique identifier for the Yjs document, matches Supabase channel
+      id: documentId, // Use the same documentId
       value: initialValue, // Initial content if the Y.Doc is empty
     });
 
