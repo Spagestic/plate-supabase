@@ -29,13 +29,13 @@ export default function SlateEditorPage() {
       <ActiveUsers activeUsers={activeUsers} />
 
       {/* Main content */}
-      <div className="flex-1 overflow-hidden p-12">
+      <div className="flex-1 p-12">
         <div className="max-w-4xl mx-auto h-full">
-          <div className="h-full overflow-hidden text-muted-foreground">
+          <div className="h-full text-muted-foreground">
             <Slate editor={editor} initialValue={initialValue}>
               <Cursors>
                 <Editable
-                  className="min-h-full px-4 py-8 focus:outline-none text-muted-foreground text-base"
+                  className="min-h-full px-4 py-8 focus:outline-none text-muted-foreground text-base overflow-auto"
                   renderElement={renderElement}
                   renderLeaf={renderLeaf}
                   onKeyDown={handleKeyDown}
