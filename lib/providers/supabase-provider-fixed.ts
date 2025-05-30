@@ -26,6 +26,7 @@ export class SupabaseProvider implements UnifiedProvider {
   private _isSynced = false;
   private initialStateReceived = false;
   private databaseContentCache: any = null;
+
   constructor(
     document: Y.Doc,
     awareness: Awareness,
@@ -94,9 +95,7 @@ export class SupabaseProvider implements UnifiedProvider {
       return;
     }
 
-    console.log(
-      `🔌 Connecting SupabaseProvider to channel: ${this.channelName}`
-    );
+    console.log(`🔌 Connecting SupabaseProvider to channel: ${this.channelName}`);
 
     // Create Supabase channel with proper configuration
     this.channel = this.supabase.channel(this.channelName, {
@@ -122,7 +121,7 @@ export class SupabaseProvider implements UnifiedProvider {
     // Subscribe to channel with comprehensive error handling
     this.channel.subscribe(async (status) => {
       console.log(`📡 SupabaseProvider subscription status: ${status}`);
-
+      
       if (status === "SUBSCRIBED") {
         this._isConnected = true;
 
@@ -151,9 +150,7 @@ export class SupabaseProvider implements UnifiedProvider {
           }
         }, 1000);
 
-        console.log(
-          "🎉 SupabaseProvider connected and ready for collaboration"
-        );
+        console.log("🎉 SupabaseProvider connected and ready for collaboration");
       } else if (status === "CHANNEL_ERROR") {
         console.error("❌ SupabaseProvider channel error");
         this._isConnected = false;
@@ -209,13 +206,9 @@ export class SupabaseProvider implements UnifiedProvider {
       console.log(`👋 User ${key} joined`, newPresences);
     });
 
-    this.channel.on(
-      "presence",
-      { event: "leave" },
-      ({ key, leftPresences }) => {
-        console.log(`👋 User ${key} left`, leftPresences);
-      }
-    );
+    this.channel.on("presence", { event: "leave" }, ({ key, leftPresences }) => {
+      console.log(`👋 User ${key} left`, leftPresences);
+    });
   }
 
   private setupDocumentSync(): void {
@@ -227,21 +220,18 @@ export class SupabaseProvider implements UnifiedProvider {
       if (payload.payload.sender === this.document.clientID) return;
 
       try {
-        console.log(
-          "📥 Received Yjs update from client:",
-          payload.payload.sender
-        );
-
+        console.log("📥 Received Yjs update from client:", payload.payload.sender);
+        
         // Decode the base64 encoded update
         const update = new Uint8Array(
           atob(payload.payload.update)
             .split("")
             .map((c) => c.charCodeAt(0))
         );
-
+        
         // Apply the update to our document with remote origin
         Y.applyUpdate(this.document, update, "supabase-remote");
-
+        
         // Mark as synced once we receive updates
         if (!this._isSynced) {
           this._isSynced = true;
@@ -253,104 +243,83 @@ export class SupabaseProvider implements UnifiedProvider {
     });
 
     // Handle state requests from newly connected clients
-    this.channel.on(
-      "broadcast",
-      { event: "request-yjs-state" },
-      (payload: any) => {
-        // Don't respond to our own requests
-        if (payload.payload.sender === this.document.clientID) return;
+    this.channel.on("broadcast", { event: "request-yjs-state" }, (payload: any) => {
+      // Don't respond to our own requests
+      if (payload.payload.sender === this.document.clientID) return;
 
-        console.log("📤 State requested by client:", payload.payload.sender);
+      console.log("📤 State requested by client:", payload.payload.sender);
+      
+      try {
+        // Encode the current document state
+        const currentState = Y.encodeStateAsUpdate(this.document);
+        const base64State = btoa(String.fromCharCode(...currentState));
 
-        try {
-          // Encode the current document state
-          const currentState = Y.encodeStateAsUpdate(this.document);
-          const base64State = btoa(String.fromCharCode(...currentState));
-
-          // Send the state to the requesting client
-          this.channel!.send({
-            type: "broadcast",
-            event: "yjs-state-response",
-            payload: {
-              state: base64State,
-              sender: this.document.clientID,
-              recipient: payload.payload.sender,
-            },
-          });
-
-          console.log(
-            "✅ Sent state response to client:",
-            payload.payload.sender
-          );
-        } catch (error) {
-          console.error("❌ Error sending state response:", error);
-        }
+        // Send the state to the requesting client
+        this.channel!.send({
+          type: "broadcast",
+          event: "yjs-state-response",
+          payload: {
+            state: base64State,
+            sender: this.document.clientID,
+            recipient: payload.payload.sender,
+          },
+        });
+        
+        console.log("✅ Sent state response to client:", payload.payload.sender);
+      } catch (error) {
+        console.error("❌ Error sending state response:", error);
       }
-    );
+    });
 
     // Handle state responses from other clients
-    this.channel.on(
-      "broadcast",
-      { event: "yjs-state-response" },
-      (payload: any) => {
-        // Only process responses meant for us
-        if (payload.payload.recipient !== this.document.clientID) return;
+    this.channel.on("broadcast", { event: "yjs-state-response" }, (payload: any) => {
+      // Only process responses meant for us
+      if (payload.payload.recipient !== this.document.clientID) return;
 
-        try {
-          console.log(
-            "📥 Received state response from client:",
-            payload.payload.sender
-          );
-
-          // Decode and apply the state
-          const state = new Uint8Array(
-            atob(payload.payload.state)
-              .split("")
-              .map((c) => c.charCodeAt(0))
-          );
-
-          Y.applyUpdate(this.document, state, "supabase-remote");
-          this._isSynced = true;
-          this.initialStateReceived = true;
-          console.log("✅ Applied initial document state from other client");
-        } catch (error) {
-          console.error("❌ Error applying state response:", error);
-        }
+      try {
+        console.log("📥 Received state response from client:", payload.payload.sender);
+        
+        // Decode and apply the state
+        const state = new Uint8Array(
+          atob(payload.payload.state)
+            .split("")
+            .map((c) => c.charCodeAt(0))
+        );
+        
+        Y.applyUpdate(this.document, state, "supabase-remote");
+        this._isSynced = true;
+        this.initialStateReceived = true;
+        console.log("✅ Applied initial document state from other client");
+      } catch (error) {
+        console.error("❌ Error applying state response:", error);
       }
-    );
+    });
   }
 
   private setupAwarenessSync(): void {
     if (!this.channel) return;
 
     // Handle incoming awareness updates from other clients
-    this.channel.on(
-      "broadcast",
-      { event: "awareness-update" },
-      (payload: any) => {
-        // Ignore updates from ourselves
-        if (payload.payload.sender === this.document.clientID) return;
+    this.channel.on("broadcast", { event: "awareness-update" }, (payload: any) => {
+      // Ignore updates from ourselves
+      if (payload.payload.sender === this.document.clientID) return;
 
-        try {
-          console.log(
-            "👁️ Received awareness update from client:",
-            payload.payload.sender
-          );
-
-          // Decode the awareness update
-          const update = new Uint8Array(
-            atob(payload.payload.update)
-              .split("")
-              .map((c) => c.charCodeAt(0))
-          );
-
-          // Apply the awareness update
-          applyAwarenessUpdate(this.awareness, update, "supabase-remote");
-        } catch (error) {
-          console.error("❌ Error applying awareness update:", error);
-        }
+      try {
+        console.log("👁️ Received awareness update from client:", payload.payload.sender);
+        
+        // Decode the awareness update
+        const update = new Uint8Array(
+          atob(payload.payload.update)
+            .split("")
+            .map((c) => c.charCodeAt(0))
+        );
+        
+        // Apply the awareness update
+        applyAwarenessUpdate(this.awareness, update, "supabase-remote");
+      } catch (error) {
+        console.error("❌ Error applying awareness update:", error);
       }
-    );
+    });
   }
 
   private handleYjsUpdate(update: Uint8Array, origin: any): void {
@@ -359,10 +328,10 @@ export class SupabaseProvider implements UnifiedProvider {
 
     try {
       console.log("📤 Broadcasting Yjs update to other clients");
-
+      
       // Encode the update as base64
       const base64Update = btoa(String.fromCharCode(...update));
-
+      
       // Broadcast the update
       this.channel.send({
         type: "broadcast",
@@ -392,7 +361,7 @@ export class SupabaseProvider implements UnifiedProvider {
     if (changedClients.length > 0) {
       try {
         console.log("👁️ Broadcasting awareness update to other clients");
-
+        
         // Encode the awareness update
         const update = encodeAwarenessUpdate(this.awareness, changedClients);
         const base64Update = btoa(String.fromCharCode(...update));
@@ -417,7 +386,7 @@ export class SupabaseProvider implements UnifiedProvider {
 
     try {
       console.log("📤 Requesting current document state from other clients");
-
+      
       this.channel.send({
         type: "broadcast",
         event: "request-yjs-state",
@@ -432,171 +401,9 @@ export class SupabaseProvider implements UnifiedProvider {
 
   private generateUserColor(): string {
     const colors = [
-      "#FF6B6B",
-      "#4ECDC4",
-      "#45B7D1",
-      "#96CEB4",
-      "#FFEAA7",
-      "#DDA0DD",
-      "#98D8C8",
-      "#F7DC6F",
-      "#BB8FCE",
-      "#85C1E9",
+      "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
+      "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9"
     ];
     return colors[this.document.clientID % colors.length];
-  }
-}
-
-/**
- * IndexedDB Provider Implementation
- *
- * This class implements the UnifiedProvider interface for local persistence using IndexedDB.
- * It can work alongside other providers to provide offline capability.
- */
-export class IndexedDBProvider implements UnifiedProvider {
-  public readonly type = "indexeddb";
-  public awareness: Awareness;
-  public document: Y.Doc;
-
-  private _isConnected = false;
-  private _isSynced = false;
-  private dbName: string;
-  private storeName = "yjs-documents";
-
-  constructor(document: Y.Doc, awareness: Awareness, documentId: string) {
-    this.document = document;
-    this.awareness = awareness;
-    this.dbName = `yjs-${documentId}`;
-
-    this.handleYjsUpdate = this.handleYjsUpdate.bind(this);
-  }
-
-  get isConnected(): boolean {
-    return this._isConnected;
-  }
-
-  get isSynced(): boolean {
-    return this._isSynced;
-  }
-
-  async connect(): Promise<void> {
-    console.log(`Connecting IndexedDBProvider for document: ${this.dbName}`);
-
-    try {
-      // Load document from IndexedDB
-      await this.loadDocument();
-
-      // Listen to document changes for saving
-      this.document.on("update", this.handleYjsUpdate);
-
-      this._isConnected = true;
-      this._isSynced = true;
-
-      console.log("IndexedDBProvider connected successfully");
-    } catch (error) {
-      console.error("Failed to connect IndexedDBProvider:", error);
-    }
-  }
-
-  disconnect(): void {
-    if (!this._isConnected) return;
-
-    console.log("Disconnecting IndexedDBProvider");
-
-    // Save final state
-    this.saveDocument();
-
-    // Remove event listeners
-    this.document.off("update", this.handleYjsUpdate);
-
-    this._isConnected = false;
-  }
-
-  destroy(): void {
-    this.disconnect();
-  }
-
-  private async loadDocument(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 1);
-
-      request.onerror = () => reject(request.error);
-
-      request.onsuccess = () => {
-        const db = request.result;
-        const transaction = db.transaction([this.storeName], "readonly");
-        const store = transaction.objectStore(this.storeName);
-        const getRequest = store.get("document");
-
-        getRequest.onsuccess = () => {
-          if (getRequest.result) {
-            const update = new Uint8Array(getRequest.result.data);
-            Y.applyUpdate(this.document, update);
-          }
-          db.close();
-          resolve();
-        };
-
-        getRequest.onerror = () => {
-          db.close();
-          reject(getRequest.error);
-        };
-      };
-
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(this.storeName)) {
-          db.createObjectStore(this.storeName);
-        }
-      };
-    });
-  }
-
-  private async saveDocument(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 1);
-
-      request.onerror = () => reject(request.error);
-
-      request.onsuccess = () => {
-        const db = request.result;
-        const transaction = db.transaction([this.storeName], "readwrite");
-        const store = transaction.objectStore(this.storeName);
-
-        const update = Y.encodeStateAsUpdate(this.document);
-        const putRequest = store.put({ data: Array.from(update) }, "document");
-
-        putRequest.onsuccess = () => {
-          db.close();
-          resolve();
-        };
-
-        putRequest.onerror = () => {
-          db.close();
-          reject(putRequest.error);
-        };
-      };
-    });
-  }
-
-  private handleYjsUpdate(update: Uint8Array, origin: any): void {
-    if (origin === "remote") return;
-
-    // Debounced save to IndexedDB
-    this.debouncedSave();
-  }
-
-  private saveTimeout: NodeJS.Timeout | null = null;
-
-  private debouncedSave(): void {
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-    }
-
-    this.saveTimeout = setTimeout(() => {
-      this.saveDocument().catch((error) => {
-        console.error("Failed to save to IndexedDB:", error);
-      });
-    }, 1000); // Save after 1 second of inactivity
   }
 }

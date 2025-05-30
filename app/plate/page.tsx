@@ -27,6 +27,7 @@ import { ParagraphElement } from "@/components/ui/paragraph-element";
 import { ToolbarButton } from "@/components/ui/toolbar";
 import { useMounted } from "@/hooks/use-mounted";
 import { SupabaseProvider } from "@/lib/providers/unified-providers";
+import { CollaborationDebug } from "@/components/ui/collaboration-debug";
 
 const initialValue: Value = [
   { type: "h3", children: [{ text: "Title" }] },
@@ -116,6 +117,16 @@ export default function MyEditorPage() {
     },
   });
   useEffect(() => {
+    console.log("🔧 Manually connecting SupabaseProvider...");
+    console.log("Provider instance:", supabaseProvider);
+    console.log("Provider type:", supabaseProvider.type);
+    console.log("Provider connected:", supabaseProvider.isConnected);
+    supabaseProvider.connect();
+    console.log(
+      "Provider connected after connect():",
+      supabaseProvider.isConnected
+    );
+
     // Ensure component is mounted and editor is ready
     if (!mounted) {
       console.log("[MyEditorPage] useEffect: Component not mounted yet.");
@@ -134,6 +145,7 @@ export default function MyEditorPage() {
     return () => {
       console.log("[MyEditorPage] useEffect cleanup: Calling yjs.destroy().");
       editor.getApi(YjsPlugin).yjs.destroy();
+      supabaseProvider.disconnect();
     };
   }, [editor, mounted]);
 
@@ -167,6 +179,11 @@ export default function MyEditorPage() {
       <EditorContainer>
         <Editor placeholder="Type your amazing content here..." />
       </EditorContainer>
+      <CollaborationDebug
+        provider={supabaseProvider}
+        ydoc={ydoc}
+        awareness={awareness}
+      />
     </Plate>
   );
 }
