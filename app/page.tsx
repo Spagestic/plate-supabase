@@ -50,7 +50,7 @@ const initialValue: Value = [
 // You'll need to provide actual values for channelName, username, and documentId
 const documentId = "5eb6f176-fc34-45a8-bdca-abf08a9118f5"; // Or get this dynamically
 const username = `User-${Math.floor(Math.random() * 100)}`; // Or get this from auth
-const channelName = `plate-editor-${documentId}`;
+const channelName = `temp-plate-editor-${documentId}`;
 
 // Generate a consistent color for this user session
 const userColor = `#${Math.floor(Math.random() * 16777215)
