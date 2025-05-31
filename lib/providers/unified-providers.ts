@@ -26,19 +26,43 @@ export class SupabaseProvider implements UnifiedProvider {
   private _isSynced = false;
   private initialStateReceived = false;
   private databaseContentCache: any = null;
+  private syncTimeoutId: NodeJS.Timeout | null = null;
+
+  // Optional callback functions
+  public onConnect?: () => void;
+  public onDisconnect?: () => void;
+  public onError?: (error: Error) => void;
+  public onSyncChange?: (isSynced: boolean) => void;
+
   constructor(
     document: Y.Doc,
     awareness: Awareness,
     private channelName: string,
     private username: string,
-    private documentId?: string
+    private documentId?: string,
+    callbacks?: {
+      onConnect?: () => void;
+      onDisconnect?: () => void;
+      onError?: (error: Error) => void;
+      onSyncChange?: (isSynced: boolean) => void;
+    }
   ) {
     this.document = document;
     this.awareness = awareness;
 
+    // Set callbacks if provided
+    this.onConnect = callbacks?.onConnect;
+    this.onDisconnect = callbacks?.onDisconnect;
+    this.onError = callbacks?.onError;
+    this.onSyncChange = callbacks?.onSyncChange;
+
     // Bind event handlers to preserve context
     this.handleYjsUpdate = this.handleYjsUpdate.bind(this);
     this.handleAwarenessUpdate = this.handleAwarenessUpdate.bind(this);
+    this.handleYDocSync = this.handleYDocSync.bind(this);
+
+    // Listen to the document's sync events
+    this.document.on("sync", this.handleYDocSync);
   }
 
   get isConnected(): boolean {
@@ -92,10 +116,14 @@ export class SupabaseProvider implements UnifiedProvider {
     if (this.channel) {
       console.warn("SupabaseProvider already connected");
       return;
-    }        console.log(
-          `🔌 Connecting SupabaseProvider to channel: ${this.channelName}`
-        );
-        console.log("👤 User info:", { username: this.username, clientId: this.document.clientID });
+    }
+    console.log(
+      `🔌 Connecting SupabaseProvider to channel: ${this.channelName}`
+    );
+    console.log("👤 User info:", {
+      username: this.username,
+      clientId: this.document.clientID,
+    });
 
     // Create Supabase channel with proper configuration
     this.channel = this.supabase.channel(this.channelName, {
@@ -123,6 +151,7 @@ export class SupabaseProvider implements UnifiedProvider {
       console.log(`📡 SupabaseProvider subscription status: ${status}`);
 
       if (status === "SUBSCRIBED") {
+        console.log("[SupabaseProvider] Channel subscribed successfully.");
         this._isConnected = true;
 
         // Track presence for this user
@@ -130,37 +159,50 @@ export class SupabaseProvider implements UnifiedProvider {
           user_id: this.document.clientID,
           username: this.username,
           online_at: new Date().getTime(),
-        });        // Don't set awareness state here - let YjsPlugin handle it
-        // The YjsPlugin will set the cursor data from its configuration
-        
-        console.log("👁️ Awareness will be managed by YjsPlugin with cursor data:", {
-          clientID: this.document.clientID,
-          currentState: this.awareness.getLocalState(),
         });
+
+        console.log(
+          "👁️ Awareness will be managed by YjsPlugin with cursor data:",
+          {
+            clientID: this.document.clientID,
+            currentState: this.awareness.getLocalState(),
+          }
+        );
 
         // Request current state from other connected clients
         console.log("📤 Requesting document state from other clients...");
         this.requestState();
 
-        // Set sync status after allowing time for state requests
-        setTimeout(() => {
-          if (!this.initialStateReceived) {
-            this._isSynced = true;
-            console.log("✅ No initial state received, marking as synced");
+        // Clear any existing timeout
+        if (this.syncTimeoutId) clearTimeout(this.syncTimeoutId);
+
+        // Start a timer to assume sync if no state response is received
+        this.syncTimeoutId = setTimeout(() => {
+          if (!this._isSynced) {
+            console.log(
+              "[SupabaseProvider] Timeout waiting for initial state. Assuming synced as first/only client."
+            );
+            this.setSyncedAndNotify(true);
           }
-        }, 1000);
+        }, 2000); // 2-second timeout
 
         console.log(
           "🎉 SupabaseProvider connected and ready for collaboration"
         );
-      } else if (status === "CHANNEL_ERROR") {
-        console.error("❌ SupabaseProvider channel error");
-        this._isConnected = false;
-        this._isSynced = false;
       } else if (status === "TIMED_OUT") {
         console.error("⏰ SupabaseProvider connection timed out");
         this._isConnected = false;
         this._isSynced = false;
+        this.onDisconnect?.();
+        this.onError?.(new Error("Supabase channel subscription timed out."));
+        this.setSyncedAndNotify(false);
+      } else if (status === "CHANNEL_ERROR") {
+        console.error("❌ SupabaseProvider channel error");
+        this._isConnected = false;
+        this._isSynced = false;
+        this.onDisconnect?.();
+        this.onError?.(new Error("Supabase channel error."));
+        this.setSyncedAndNotify(false);
       } else if (status === "CLOSED") {
         console.log("🔌 SupabaseProvider channel closed");
         this._isConnected = false;
@@ -170,37 +212,50 @@ export class SupabaseProvider implements UnifiedProvider {
   }
 
   disconnect(): void {
-    if (!this.channel) {
-      console.warn("SupabaseProvider not connected");
-      return;
+    console.log("[SupabaseProvider] Disconnecting...");
+    if (this.channel) {
+      this.channel.untrack();
+      this.channel.unsubscribe();
+      this.channel = null;
     }
-
-    console.log("🔌 Disconnecting SupabaseProvider");
-
-    // Remove event listeners
-    this.document.off("update", this.handleYjsUpdate);
-    this.awareness.off("update", this.handleAwarenessUpdate);
-
-    // Unsubscribe from channel
-    this.channel.unsubscribe();
-    this.channel = null;
-
     this._isConnected = false;
     this._isSynced = false;
-    this.initialStateReceived = false;
+    this.onDisconnect?.();
+    this.setSyncedAndNotify(false);
+
+    if (this.syncTimeoutId) {
+      clearTimeout(this.syncTimeoutId);
+      this.syncTimeoutId = null;
+    }
+    console.log("[SupabaseProvider] Disconnected.");
   }
 
   destroy(): void {
     this.disconnect();
-    // Note: We don't destroy the document or awareness here as they might be shared
-    // The caller is responsible for managing their lifecycle
+    this.document.off("update", this.handleYjsUpdate);
+    this.document.off("sync", this.handleYDocSync);
+    this.awareness.off("update", this.handleAwarenessUpdate);
+  }
+
+  private setSyncedAndNotify(isSynced: boolean): void {
+    this._isSynced = isSynced;
+    this.onSyncChange?.(isSynced);
+    console.log(`[SupabaseProvider] Sync status changed to: ${isSynced}`);
+
+    // Emit a custom event that can be listened to by the YjsPlugin
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("supabase-sync-change", {
+          detail: { isSynced, provider: this },
+        })
+      );
+    }
   }
 
   private setupPresence(): void {
     if (!this.channel) return;
 
     this.channel.on("presence", { event: "sync" }, () => {
-      // Handle presence updates for user list
       console.log("👥 Presence sync updated");
     });
 
@@ -243,7 +298,7 @@ export class SupabaseProvider implements UnifiedProvider {
 
         // Mark as synced once we receive updates
         if (!this._isSynced) {
-          this._isSynced = true;
+          this.setSyncedAndNotify(true);
           console.log("✅ Document synced via received update");
         }
       } catch (error) {
@@ -309,8 +364,8 @@ export class SupabaseProvider implements UnifiedProvider {
           );
 
           Y.applyUpdate(this.document, state, "supabase-remote");
-          this._isSynced = true;
           this.initialStateReceived = true;
+          this.setSyncedAndNotify(true);
           console.log("✅ Applied initial document state from other client");
         } catch (error) {
           console.error("❌ Error applying state response:", error);
@@ -318,6 +373,7 @@ export class SupabaseProvider implements UnifiedProvider {
       }
     );
   }
+
   private setupAwarenessSync(): void {
     if (!this.channel) return;
 
@@ -344,7 +400,7 @@ export class SupabaseProvider implements UnifiedProvider {
 
           // Apply the awareness update
           applyAwarenessUpdate(this.awareness, update, "supabase-remote");
-          
+
           // Log current awareness states after update
           console.log("👁️ Current awareness states:", {
             localState: this.awareness.getLocalState(),
@@ -380,6 +436,7 @@ export class SupabaseProvider implements UnifiedProvider {
       console.error("❌ Error broadcasting Yjs update:", error);
     }
   }
+
   private handleAwarenessUpdate(
     {
       added,
@@ -439,21 +496,18 @@ export class SupabaseProvider implements UnifiedProvider {
     }
   }
 
-  private generateUserColor(): string {
-    const colors = [
-      "#FF6B6B",
-      "#4ECDC4",
-      "#45B7D1",
-      "#96CEB4",
-      "#FFEAA7",
-      "#DDA0DD",
-      "#98D8C8",
-      "#F7DC6F",
-      "#BB8FCE",
-      "#85C1E9",
-    ];
-    return colors[this.document.clientID % colors.length];
-  }
+  // Yjs document 'sync' event handler
+  private handleYDocSync = (isSyncedStatus: boolean, originProvider?: any) => {
+    // Only react if the sync event is about THIS provider instance or if originProvider is undefined/this
+    if (originProvider && originProvider !== this) {
+      return;
+    }
+
+    console.log(
+      `[SupabaseProvider] Handling YDoc sync event for this provider. New status: ${isSyncedStatus}`
+    );
+    this.setSyncedAndNotify(isSyncedStatus);
+  };
 }
 
 /**
@@ -471,6 +525,7 @@ export class IndexedDBProvider implements UnifiedProvider {
   private _isSynced = false;
   private dbName: string;
   private storeName = "yjs-documents";
+  private saveTimeout: NodeJS.Timeout | null = null;
 
   constructor(document: Y.Doc, awareness: Awareness, documentId: string) {
     this.document = document;
@@ -594,8 +649,6 @@ export class IndexedDBProvider implements UnifiedProvider {
     // Debounced save to IndexedDB
     this.debouncedSave();
   }
-
-  private saveTimeout: NodeJS.Timeout | null = null;
 
   private debouncedSave(): void {
     if (this.saveTimeout) {
