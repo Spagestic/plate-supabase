@@ -70,7 +70,7 @@ const supabaseProvider = new SupabaseProvider(
   documentId
 );
 
-export default function MyEditorPage() {
+export default function TeporaryPlateEditorPage() {
   const mounted = useMounted();
 
   const editor = usePlateEditor({
