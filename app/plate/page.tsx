@@ -66,7 +66,7 @@ const supabaseProvider = new SupabaseProvider(
   documentId
 );
 
-export default function MyEditorPage() {
+export default function PlateEditorPage() {
   const mounted = useMounted();
   const [initialValue, setInitialValue] = useState<Value>(fallbackInitialValue);
   const [isContentLoaded, setIsContentLoaded] = useState(false);
