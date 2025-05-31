@@ -21,7 +21,6 @@ import { BlockquoteElement } from "@/components/ui/blockquote-element";
 import { Editor, EditorContainer } from "@/components/ui/editor";
 import { FixedToolbar } from "@/components/ui/fixed-toolbar";
 import { HeadingElement } from "@/components/ui/heading-element";
-import { PlateCursorWrapper } from "@/components/ui/plate-cursor-wrapper";
 
 import { MarkToolbarButton } from "@/components/ui/mark-toolbar-button";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
@@ -336,14 +335,10 @@ export default function TeporaryPlateEditorPage() {
         <MarkToolbarButton nodeType="underline" tooltip="Underline (⌘+U)">
           U
         </MarkToolbarButton>
-      </FixedToolbar>{" "}
-      {/* Wrap with PlateCursorWrapper to provide a fallback cursor display mechanism */}
-      <PlateCursorWrapper>
-        <EditorContainer className="relative">
-          <Editor placeholder="Type your amazing content here..." />
-          {/* RemoteCursorOverlay is already included via YjsPlugin render.afterEditable */}
-        </EditorContainer>
-      </PlateCursorWrapper>
+      </FixedToolbar>
+      <EditorContainer className="relative">
+        <Editor placeholder="Type your amazing content here..." />
+      </EditorContainer>
       <CollaborationDebug
         provider={supabaseProvider}
         ydoc={ydoc}
