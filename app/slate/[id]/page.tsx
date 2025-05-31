@@ -88,7 +88,7 @@ export default function SlateEditorPage() {
               </p>
             </div>
             <div className="flex gap-4">
-              <Link href="/documents" className="text-primary hover:underline">
+              <Link href="/slate" className="text-primary hover:underline">
                 Persistent Documents
               </Link>
               <Link href="/" className="text-primary hover:underline">
