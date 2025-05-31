@@ -2,8 +2,6 @@
 import * as React from "react";
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { Value } from "@udecode/plate";
-import * as Y from "yjs";
-import { Awareness } from "y-protocols/awareness";
 import { createClient } from "@/lib/supabase/client";
 import { BasicElementsPlugin } from "@udecode/plate-basic-elements/react";
 import { BasicMarksPlugin } from "@udecode/plate-basic-marks/react";
@@ -20,34 +18,29 @@ import { BlockquoteElement } from "@/components/ui/blockquote-element";
 import { HeadingElement } from "@/components/ui/heading-element";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
 import { useMounted } from "@/hooks/use-mounted";
-import { SupabaseProvider } from "@/lib/providers/unified-providers";
 import { CollaborationDebug } from "@/components/ui/collaboration-debug";
 import { LoadingIndicator } from "./LoadingIndicator";
 import { PlateToolbar } from "./PlateToolbar";
 import { PlateEditorContainer } from "./PlateEditorContainer";
 import { fallbackInitialValue } from "./fallbackInitialValue";
+import { createProviderSetup } from "./providerSetup";
 
-// Example: Instantiate your SupabaseProvider
-// You'll need to provide actual values for channelName, username, and documentId
 const documentId = "5eb6f176-fc34-45a8-bdca-abf08a9118f5"; // Or get this dynamically
 const username = `User-${Math.floor(Math.random() * 100)}`; // Or get this from auth
 
-const channelName = `plate-editor-${documentId}`;
 // Generate a consistent color for this user session
 const userColor = `#${Math.floor(Math.random() * 16777215)
   .toString(16)
   .padStart(6, "0")}`;
-// Create Y.Doc and Awareness instances that we'll share between YjsPlugin and our custom provider
-const ydoc = new Y.Doc();
-const awareness = new Awareness(ydoc);
-// Create our custom SupabaseProvider with the shared instances
-const supabaseProvider = new SupabaseProvider(
+
+// Use createProviderSetup to get ydoc, awareness, supabaseProvider, channelName
+const {
   ydoc,
   awareness,
-  channelName,
-  username,
-  documentId
-);
+  supabaseProvider,
+  //  channelName
+} = createProviderSetup(documentId, username);
+
 export default function PlateEditorPage() {
   const mounted = useMounted();
   const [initialValue, setInitialValue] = useState<Value>(fallbackInitialValue);
@@ -59,7 +52,6 @@ export default function PlateEditorPage() {
     async (content: Value) => {
       // Validate content before saving
       if (!content || !Array.isArray(content) || content.length === 0) {
-        console.warn("⚠️ Skipping save: Content is empty or invalid", content);
         return;
       } // Additional validation: check if content has meaningful data
       const hasContent = content.some((node) => {
@@ -77,10 +69,6 @@ export default function PlateEditorPage() {
       });
 
       if (!hasContent) {
-        console.warn(
-          "⚠️ Skipping save: Content appears to be empty (no meaningful text)",
-          content
-        );
         return;
       }
 
@@ -92,12 +80,6 @@ export default function PlateEditorPage() {
       // Set a short timeout to batch rapid changes while maintaining responsiveness
       saveTimeoutRef.current = setTimeout(async () => {
         try {
-          console.log("💾 Attempting to save document content to database:", {
-            documentId,
-            contentLength: content.length,
-            content: content.slice(0, 2), // Show first 2 elements for debugging
-          });
-
           const { data, error } = await supabase
             .from("document")
             .update({
@@ -108,22 +90,9 @@ export default function PlateEditorPage() {
             .select(); // Add select to see what was updated
 
           if (error) {
-            console.error("❌ Error saving document:", error);
-            console.error("❌ Error details:", {
-              message: error.message,
-              details: error.details,
-              hint: error.hint,
-              code: error.code,
-            });
           } else {
-            console.log("✅ Document saved successfully:", {
-              updatedRows: data?.length || 0,
-              timestamp: new Date().toISOString(),
-            });
           }
-        } catch (error) {
-          console.error("❌ Unexpected error saving document:", error);
-        }
+        } catch (error) {}
       }, 100); // 100ms debounce for real-time feel
     },
     [supabase]
@@ -132,23 +101,14 @@ export default function PlateEditorPage() {
   useEffect(() => {
     async function loadInitialContent() {
       try {
-        console.log("🔍 Loading initial content from database...");
         await supabaseProvider.preloadDatabaseContent();
         const databaseContent = supabaseProvider.getDatabaseContent();
         if (databaseContent && Array.isArray(databaseContent)) {
-          console.log(
-            "✅ Using database content as initial value:",
-            databaseContent
-          );
           setInitialValue(databaseContent);
         } else {
-          console.log(
-            "📝 No database content found, using fallback initial value"
-          );
           setInitialValue(fallbackInitialValue);
         }
       } catch (error) {
-        console.error("❌ Error loading initial content:", error);
         setInitialValue(fallbackInitialValue);
       } finally {
         setIsContentLoaded(true);
@@ -211,27 +171,10 @@ export default function PlateEditorPage() {
   useEffect(() => {
     // Only initialize editor after content is loaded
     if (!isContentLoaded || !mounted) {
-      console.log(
-        "[MyEditorPage] Waiting for content to load or component to mount"
-      );
       return;
     }
-    console.log("🔧 Manually connecting SupabaseProvider...");
-    console.log("Provider instance:", supabaseProvider);
-    console.log("Provider type:", supabaseProvider.type);
-    console.log("Provider connected:", supabaseProvider.isConnected);
     supabaseProvider.connect();
-    console.log(
-      "Provider connected after connect():",
-      supabaseProvider.isConnected
-    );
-    console.log(
-      "[MyEditorPage] useEffect: Component mounted, editor ready with loaded content"
-    );
     // Initialize Yjs connection, sync document, and set initial editor state
-    console.log(
-      "[MyEditorPage] useEffect: Calling yjs.init() with loaded content"
-    );
     editor.getApi(YjsPlugin).yjs.init({
       id: documentId, // Use the same documentId
       value: initialValue, // Use the loaded content from database
@@ -240,30 +183,12 @@ export default function PlateEditorPage() {
     // Mark editor as initialized after a short delay to allow YJS to settle
     setTimeout(() => {
       setIsEditorInitialized(true);
-      console.log("✅ Editor initialization complete, saves are now enabled");
     }, 1000); // 1 second delay to ensure YJS is fully initialized
     // Add debug info about awareness and cursors
-    setTimeout(() => {
-      console.log("🎯 Post-init debug info:", {
-        yjsPluginOptions: editor.getOptions(YjsPlugin),
-        awarenessState: awareness.getLocalState(),
-        awarenessStates: Array.from(awareness.getStates().entries()),
-        supabaseConnected: supabaseProvider.isConnected,
-        supabaseSynced: supabaseProvider.isSynced,
-        initialValueUsed: initialValue,
-      });
-    }, 2000);
+    setTimeout(() => {}, 2000);
     // Add more frequent debugging to monitor cursor updates
     const debugInterval = setInterval(() => {
       const awarenessStates = Array.from(awareness.getStates().entries());
-      console.log("🔄 Awareness states update:", {
-        localClientId: awareness.clientID,
-        totalStates: awarenessStates.length,
-        states: awarenessStates,
-        remoteCursors: awarenessStates.filter(
-          ([clientId]) => clientId !== awareness.clientID
-        ),
-      });
     }, 5000);
 
     // Clear interval on cleanup
@@ -275,7 +200,6 @@ export default function PlateEditorPage() {
       }
       // Reset initialization flag
       setIsEditorInitialized(false);
-      console.log("[MyEditorPage] useEffect cleanup: Calling yjs.destroy().");
       editor.getApi(YjsPlugin).yjs.destroy();
       supabaseProvider.disconnect();
     };
@@ -284,11 +208,6 @@ export default function PlateEditorPage() {
     if (!mounted || !editor || !isContentLoaded) return;
     const handleSelectionChange = () => {
       if (editor?.selection) {
-        console.log("📍 Selection changed:", {
-          selection: editor.selection,
-          clientId: awareness.clientID,
-          localState: awareness.getLocalState(),
-        });
       }
     };
 
@@ -297,53 +216,24 @@ export default function PlateEditorPage() {
       // Only save if this is NOT a remote change from Supabase
       // Remote changes come with origin "supabase-remote"
       if (origin === "supabase-remote") {
-        console.log("🔄 YJS document updated from remote (Supabase):", {
-          origin,
-          updateSize: update.length,
-        });
         return;
       }
 
       // Don't save during initialization to prevent empty content saves
       if (!isEditorInitialized) {
-        console.log(
-          "🔄 YJS document updated during initialization (skipping save):",
-          {
-            origin,
-            updateSize: update.length,
-            isEditorInitialized,
-          }
-        );
         return;
       }
-
-      console.log("🔄 YJS document updated locally:", {
-        origin,
-        updateSize: update.length,
-        clientId: awareness.clientID,
-        isEditorInitialized,
-      });
 
       // Convert YJS content to Slate format for saving
       try {
         // Use editor.children which should now contain the updated content
         const currentContent = editor.children;
-        console.log("💾 Attempting to save YJS content to database:", {
-          content: currentContent,
-          contentLength: currentContent?.length,
-        });
 
         if (currentContent && Array.isArray(currentContent)) {
           saveDocument(currentContent);
         } else {
-          console.warn(
-            "⚠️ Skipping save: editor.children is not a valid array",
-            currentContent
-          );
         }
-      } catch (error) {
-        console.error("Error converting YJS content for saving:", error);
-      }
+      } catch (error) {}
     };
     // Listen to YJS document updates using our shared ydoc instance
     ydoc.on("update", handleYjsUpdate);
