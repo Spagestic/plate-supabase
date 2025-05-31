@@ -43,13 +43,14 @@ const {
   //  channelName
 } = createProviderSetup(documentId, username);
 
+type LoadingState = "loading-db" | "connecting-provider" | "syncing" | "ready";
+
 export default function PlateEditorPage() {
   const mounted = useMounted();
+  const [loadingState, setLoadingState] = useState<LoadingState>("loading-db");
   const [initialValue, setInitialValue] = useState<Value>(fallbackInitialValue);
-  const [isContentLoaded, setIsContentLoaded] = useState(false);
-  const [isEditorInitialized, setIsEditorInitialized] = useState(false);
   const [isFirstUser, setIsFirstUser] = useState(false);
-  const [isProviderReady, setIsProviderReady] = useState(false);
+  const [isEditorInitialized, setIsEditorInitialized] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const supabase = createClient(); // Document saving function with debouncing and validation
   const saveDocument = useCallback(
@@ -103,34 +104,40 @@ export default function PlateEditorPage() {
   );
   // Load initial content from database
   useEffect(() => {
-    async function initializeProvider() {
-      try {
-        await supabaseProvider.preloadDatabaseContent();
-        supabaseProvider.connect();
-        // Wait a bit for initial sync, then check if we're first user
-        setTimeout(() => {
-          // Check if Yjs document is empty
-          const yjsContent = ydoc.get("content", Y.XmlText);
-          const isEmptyDocument = yjsContent.length === 0;
-          setIsFirstUser(isEmptyDocument);
-          if (isEmptyDocument) {
-            // Load from database only if we're first user
-            const databaseContent = supabaseProvider.getDatabaseContent();
-            if (databaseContent && Array.isArray(databaseContent)) {
-              setInitialValue(databaseContent);
-            }
+    async function loadFromDB() {
+      setLoadingState("loading-db");
+      await supabaseProvider.preloadDatabaseContent();
+      setLoadingState("connecting-provider");
+      supabaseProvider.connect();
+    }
+    loadFromDB();
+  }, []);
+  // 2. Listen for provider sync
+  useEffect(() => {
+    function handleSyncChange(isSynced: boolean) {
+      if (isSynced) {
+        // Check if Yjs doc is empty
+        const yjsContent = ydoc.get("content", Y.XmlText);
+        const isEmpty = yjsContent.length === 0;
+        setIsFirstUser(isEmpty);
+        // If first user, set initial value from DB
+        if (isEmpty) {
+          const dbContent = supabaseProvider.getDatabaseContent();
+          if (dbContent && Array.isArray(dbContent)) {
+            setInitialValue(dbContent);
           }
-          setIsContentLoaded(true);
-          setIsProviderReady(true);
-        }, 500);
-      } catch (error) {
-        setInitialValue(fallbackInitialValue);
-        setIsContentLoaded(true);
-        setIsProviderReady(true);
+        }
+        setLoadingState("ready");
+      } else {
+        setLoadingState("syncing");
       }
     }
-    initializeProvider();
+    supabaseProvider.onSyncChange = handleSyncChange;
+    return () => {
+      supabaseProvider.onSyncChange = undefined;
+    };
   }, []);
+  // 3. Editor setup (wait for ready)
   const editor = usePlateEditor({
     plugins: [
       BasicElementsPlugin,
@@ -184,13 +191,10 @@ export default function PlateEditorPage() {
     },
   });
   useEffect(() => {
-    // Wait for both content loaded AND provider ready
-    if (!isContentLoaded || !mounted || !isProviderReady) {
-      return;
-    }
+    if (loadingState !== "ready" || !mounted) return;
     editor.getApi(YjsPlugin).yjs.init({
       id: documentId,
-      value: isFirstUser ? initialValue : fallbackInitialValue, // Only use DB content if first user
+      value: isFirstUser ? initialValue : fallbackInitialValue,
     });
     // Mark editor as initialized after a short delay to allow YJS to settle
     setTimeout(() => {
@@ -214,16 +218,9 @@ export default function PlateEditorPage() {
       editor.getApi(YjsPlugin).yjs.destroy();
       supabaseProvider.disconnect();
     };
-  }, [
-    editor,
-    mounted,
-    isContentLoaded,
-    isProviderReady,
-    initialValue,
-    isFirstUser,
-  ]);
+  }, [loadingState, mounted, isFirstUser, initialValue, editor]);
   useEffect(() => {
-    if (!mounted || !editor || !isContentLoaded) return;
+    if (!mounted || !editor || loadingState !== "ready") return;
     const handleSelectionChange = () => {
       if (editor?.selection) {
       }
@@ -271,15 +268,10 @@ export default function PlateEditorPage() {
     return () => {
       ydoc.off("update", handleYjsUpdate);
     };
-  }, [mounted, editor, isContentLoaded, saveDocument, isEditorInitialized]);
+  }, [mounted, editor, loadingState, saveDocument, isEditorInitialized]);
   // Show loading state while content is being loaded
-  if (
-    !mounted ||
-    !isContentLoaded ||
-    !isProviderReady ||
-    !isEditorInitialized
-  ) {
-    return <LoadingIndicator />;
+  if (!mounted || loadingState !== "ready") {
+    return <LoadingIndicator message={loadingState} />;
   }
   return (
     <Plate editor={editor}>
