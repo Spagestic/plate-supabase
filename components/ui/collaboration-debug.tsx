@@ -7,12 +7,16 @@ interface CollaborationDebugProps {
   provider: any;
   ydoc: any;
   awareness: any;
+  isFirstUser?: boolean;
+  hasCheckedCollaborationState?: boolean;
 }
 
 export function CollaborationDebug({
   provider,
   ydoc,
   awareness,
+  isFirstUser,
+  hasCheckedCollaborationState,
 }: CollaborationDebugProps) {
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [userCount, setUserCount] = useState(0);
@@ -67,8 +71,7 @@ export function CollaborationDebug({
     <div className="fixed bottom-4 right-4 bg-black/80 text-white p-4 rounded-lg font-mono text-xs max-w-sm z-50">
       <div className="mb-2">
         <span className="font-bold">Collaboration Status</span>
-      </div>
-      <div className="mb-1">
+      </div>      <div className="mb-1">
         Status:{" "}
         <span
           className={`inline-block w-2 h-2 rounded-full mr-2 ${
@@ -81,7 +84,21 @@ export function CollaborationDebug({
         ></span>
         {connectionStatus}
       </div>
-      <div className="mb-2">Users: {userCount}</div>
+      <div className="mb-1">Users: {userCount}</div>
+      {isFirstUser !== undefined && (
+        <div className="mb-1">
+          First User: <span className={isFirstUser ? "text-green-400" : "text-yellow-400"}>
+            {isFirstUser ? "Yes" : "No"}
+          </span>
+        </div>
+      )}
+      {hasCheckedCollaborationState !== undefined && (
+        <div className="mb-1">
+          State Checked: <span className={hasCheckedCollaborationState ? "text-green-400" : "text-yellow-400"}>
+            {hasCheckedCollaborationState ? "Yes" : "No"}
+          </span>
+        </div>
+      )}
       <div className="text-xs">
         <strong>Recent Activity:</strong>
         <div className="max-h-24 overflow-y-auto mt-1">
