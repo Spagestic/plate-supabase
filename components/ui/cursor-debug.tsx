@@ -8,8 +8,13 @@ import { YjsPlugin } from "@udecode/plate-yjs/react";
 
 export function CursorDebug({ awareness }: { awareness: Awareness }) {
   const [state, setState] = React.useState<any>({});
+  const [mounted, setMounted] = React.useState(false);
   const isSynced = usePluginOption(YjsPlugin, "_isSynced");
   const yjs = usePluginOption(YjsPlugin, "providers");
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   React.useEffect(() => {
     const interval = setInterval(() => {
@@ -39,7 +44,7 @@ export function CursorDebug({ awareness }: { awareness: Awareness }) {
         <strong>Cursor Debug</strong>
       </div>
       <div>Status: {isSynced ? "✅ Synced" : "❌ Not Synced"}</div>
-      <div>Local ID: {awareness.clientID}</div>
+      <div>Local ID: {mounted ? awareness.clientID : null}</div>
       <div>Users: {state.totalUsers || 0}</div>
       <details>
         <summary className="cursor-pointer">Remote Users</summary>
