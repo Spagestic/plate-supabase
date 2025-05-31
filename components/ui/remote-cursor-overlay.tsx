@@ -28,6 +28,24 @@ function RemoteCursorOverlayContent() {
     containerRef,
   });
 
+  // Add debugging
+  React.useEffect(() => {
+    console.log("🎯 Remote cursors detailed debug:", {
+      cursorsCount: cursors.length,
+      cursors: cursors.map(c => ({
+        clientId: c.clientId,
+        data: c.data,
+        hasCaretPosition: !!c.caretPosition,
+        caretPosition: c.caretPosition,
+        selectionRectsCount: c.selectionRects.length,
+        selectionRects: c.selectionRects,
+        rawCursor: c,
+      })),
+      containerRef: containerRef?.current,
+      isContainerMounted: !!containerRef?.current,
+    });
+  }, [cursors, containerRef]);
+
   return (
     <>
       {cursors.map((cursor) => (

@@ -92,11 +92,10 @@ export class SupabaseProvider implements UnifiedProvider {
     if (this.channel) {
       console.warn("SupabaseProvider already connected");
       return;
-    }
-
-    console.log(
-      `🔌 Connecting SupabaseProvider to channel: ${this.channelName}`
-    );
+    }        console.log(
+          `🔌 Connecting SupabaseProvider to channel: ${this.channelName}`
+        );
+        console.log("👤 User info:", { username: this.username, clientId: this.document.clientID });
 
     // Create Supabase channel with proper configuration
     this.channel = this.supabase.channel(this.channelName, {
@@ -131,12 +130,12 @@ export class SupabaseProvider implements UnifiedProvider {
           user_id: this.document.clientID,
           username: this.username,
           online_at: new Date().getTime(),
-        });
-
-        // Set local awareness state with user information
-        this.awareness.setLocalStateField("user", {
-          name: this.username,
-          color: this.generateUserColor(),
+        });        // Don't set awareness state here - let YjsPlugin handle it
+        // The YjsPlugin will set the cursor data from its configuration
+        
+        console.log("👁️ Awareness will be managed by YjsPlugin with cursor data:", {
+          clientID: this.document.clientID,
+          currentState: this.awareness.getLocalState(),
         });
 
         // Request current state from other connected clients
@@ -319,7 +318,6 @@ export class SupabaseProvider implements UnifiedProvider {
       }
     );
   }
-
   private setupAwarenessSync(): void {
     if (!this.channel) return;
 
@@ -346,6 +344,12 @@ export class SupabaseProvider implements UnifiedProvider {
 
           // Apply the awareness update
           applyAwarenessUpdate(this.awareness, update, "supabase-remote");
+          
+          // Log current awareness states after update
+          console.log("👁️ Current awareness states:", {
+            localState: this.awareness.getLocalState(),
+            allStates: Array.from(this.awareness.getStates().entries()),
+          });
         } catch (error) {
           console.error("❌ Error applying awareness update:", error);
         }
@@ -376,7 +380,6 @@ export class SupabaseProvider implements UnifiedProvider {
       console.error("❌ Error broadcasting Yjs update:", error);
     }
   }
-
   private handleAwarenessUpdate(
     {
       added,
@@ -391,7 +394,13 @@ export class SupabaseProvider implements UnifiedProvider {
     const changedClients = added.concat(updated, removed);
     if (changedClients.length > 0) {
       try {
-        console.log("👁️ Broadcasting awareness update to other clients");
+        console.log("👁️ Broadcasting awareness update to other clients", {
+          added,
+          updated,
+          removed,
+          changedClients,
+          localState: this.awareness.getLocalState(),
+        });
 
         // Encode the awareness update
         const update = encodeAwarenessUpdate(this.awareness, changedClients);

@@ -48,6 +48,9 @@ const documentId = "5eb6f176-fc34-45a8-bdca-abf08a9118f5"; // Or get this dynami
 const username = `User-${Math.floor(Math.random() * 100)}`; // Or get this from auth
 const channelName = `plate-editor-${documentId}`;
 
+// Generate a consistent color for this user session
+const userColor = `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`;
+
 // Create Y.Doc and Awareness instances that we'll share between YjsPlugin and our custom provider
 const ydoc = new Y.Doc();
 const awareness = new Awareness(ydoc);
@@ -64,8 +67,7 @@ const supabaseProvider = new SupabaseProvider(
 export default function MyEditorPage() {
   const mounted = useMounted();
 
-  const editor = usePlateEditor({
-    plugins: [
+  const editor = usePlateEditor({    plugins: [
       BasicElementsPlugin,
       BasicMarksPlugin,
       YjsPlugin.configure({
@@ -75,11 +77,10 @@ export default function MyEditorPage() {
         options: {
           // Provide our own Y.Doc and Awareness instances
           ydoc: ydoc,
-          awareness: awareness,
-          cursors: {
+          awareness: awareness,          cursors: {
             data: {
-              name: username, // Use the same username
-              color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
+              name: username,
+              color: userColor,
             },
           },
           // Pass our custom provider instance
@@ -132,22 +133,67 @@ export default function MyEditorPage() {
       console.log("[MyEditorPage] useEffect: Component not mounted yet.");
       return;
     }
-    console.log("[MyEditorPage] useEffect: Component mounted, editor ready.");
-
-    // Initialize Yjs connection, sync document, and set initial editor state
+    console.log("[MyEditorPage] useEffect: Component mounted, editor ready.");    // Initialize Yjs connection, sync document, and set initial editor state
     console.log("[MyEditorPage] useEffect: Calling yjs.init().");
     editor.getApi(YjsPlugin).yjs.init({
       id: documentId, // Use the same documentId
       value: initialValue, // Initial content if the Y.Doc is empty
     });
+      // Add debug info about awareness and cursors
+    setTimeout(() => {
+      console.log("🎯 Post-init debug info:", {
+        yjsPluginOptions: editor.getOptions(YjsPlugin),
+        awarenessState: awareness.getLocalState(),
+        awarenessStates: Array.from(awareness.getStates().entries()),
+        supabaseConnected: supabaseProvider.isConnected,
+        supabaseSynced: supabaseProvider.isSynced,
+      });
+    }, 2000);
 
-    // Clean up: Destroy connection when component unmounts
+    // Add more frequent debugging to monitor cursor updates
+    const debugInterval = setInterval(() => {
+      const awarenessStates = Array.from(awareness.getStates().entries());
+      console.log("🔄 Awareness states update:", {
+        localClientId: awareness.clientID,
+        totalStates: awarenessStates.length,
+        states: awarenessStates,
+        remoteCursors: awarenessStates.filter(([clientId]) => clientId !== awareness.clientID),
+      });
+    }, 5000);    // Clear interval on cleanup
     return () => {
+      clearInterval(debugInterval);
       console.log("[MyEditorPage] useEffect cleanup: Calling yjs.destroy().");
       editor.getApi(YjsPlugin).yjs.destroy();
       supabaseProvider.disconnect();
+    };  }, [editor, mounted]);
+  // Add selection change debugging
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      if (editor?.selection) {
+        console.log("📍 Selection changed:", {
+          selection: editor.selection,
+          clientId: awareness.clientID,
+          localState: awareness.getLocalState(),
+        });
+      }
     };
-  }, [editor, mounted]);
+
+    // Listen to selection changes in the editor
+    if (mounted && editor) {
+      // Add a simple selection change listener
+      const originalOnChange = editor.onChange;
+      if (typeof originalOnChange === 'function') {
+        editor.onChange = (value: Value) => {
+          originalOnChange(value);
+          handleSelectionChange();
+        };
+      } else {
+        editor.onChange = () => {
+          handleSelectionChange();
+        };
+      }
+    }
+  }, [mounted, editor]);
 
   return (
     <Plate editor={editor}>
