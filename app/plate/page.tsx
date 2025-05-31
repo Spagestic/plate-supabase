@@ -49,7 +49,9 @@ const username = `User-${Math.floor(Math.random() * 100)}`; // Or get this from 
 const channelName = `plate-editor-${documentId}`;
 
 // Generate a consistent color for this user session
-const userColor = `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`;
+const userColor = `#${Math.floor(Math.random() * 16777215)
+  .toString(16)
+  .padStart(6, "0")}`;
 
 // Create Y.Doc and Awareness instances that we'll share between YjsPlugin and our custom provider
 const ydoc = new Y.Doc();
@@ -67,7 +69,8 @@ const supabaseProvider = new SupabaseProvider(
 export default function MyEditorPage() {
   const mounted = useMounted();
 
-  const editor = usePlateEditor({    plugins: [
+  const editor = usePlateEditor({
+    plugins: [
       BasicElementsPlugin,
       BasicMarksPlugin,
       YjsPlugin.configure({
@@ -77,7 +80,8 @@ export default function MyEditorPage() {
         options: {
           // Provide our own Y.Doc and Awareness instances
           ydoc: ydoc,
-          awareness: awareness,          cursors: {
+          awareness: awareness,
+          cursors: {
             data: {
               name: username,
               color: userColor,
@@ -133,13 +137,13 @@ export default function MyEditorPage() {
       console.log("[MyEditorPage] useEffect: Component not mounted yet.");
       return;
     }
-    console.log("[MyEditorPage] useEffect: Component mounted, editor ready.");    // Initialize Yjs connection, sync document, and set initial editor state
+    console.log("[MyEditorPage] useEffect: Component mounted, editor ready."); // Initialize Yjs connection, sync document, and set initial editor state
     console.log("[MyEditorPage] useEffect: Calling yjs.init().");
     editor.getApi(YjsPlugin).yjs.init({
       id: documentId, // Use the same documentId
       value: initialValue, // Initial content if the Y.Doc is empty
     });
-      // Add debug info about awareness and cursors
+    // Add debug info about awareness and cursors
     setTimeout(() => {
       console.log("🎯 Post-init debug info:", {
         yjsPluginOptions: editor.getOptions(YjsPlugin),
@@ -157,15 +161,18 @@ export default function MyEditorPage() {
         localClientId: awareness.clientID,
         totalStates: awarenessStates.length,
         states: awarenessStates,
-        remoteCursors: awarenessStates.filter(([clientId]) => clientId !== awareness.clientID),
+        remoteCursors: awarenessStates.filter(
+          ([clientId]) => clientId !== awareness.clientID
+        ),
       });
-    }, 5000);    // Clear interval on cleanup
+    }, 5000); // Clear interval on cleanup
     return () => {
       clearInterval(debugInterval);
       console.log("[MyEditorPage] useEffect cleanup: Calling yjs.destroy().");
       editor.getApi(YjsPlugin).yjs.destroy();
       supabaseProvider.disconnect();
-    };  }, [editor, mounted]);
+    };
+  }, [editor, mounted]);
   // Add selection change debugging
   useEffect(() => {
     const handleSelectionChange = () => {
@@ -182,7 +189,7 @@ export default function MyEditorPage() {
     if (mounted && editor) {
       // Add a simple selection change listener
       const originalOnChange = editor.onChange;
-      if (typeof originalOnChange === 'function') {
+      if (typeof originalOnChange === "function") {
         editor.onChange = (value: Value) => {
           originalOnChange(value);
           handleSelectionChange();
