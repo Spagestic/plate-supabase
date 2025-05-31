@@ -273,7 +273,12 @@ export default function PlateEditorPage() {
     };
   }, [mounted, editor, isContentLoaded, saveDocument, isEditorInitialized]);
   // Show loading state while content is being loaded
-  if (!isContentLoaded || !isProviderReady) {
+  if (
+    !mounted ||
+    !isContentLoaded ||
+    !isProviderReady ||
+    !isEditorInitialized
+  ) {
     return <LoadingIndicator />;
   }
   return (
