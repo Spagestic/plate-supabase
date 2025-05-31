@@ -64,7 +64,7 @@ export function CollaborationDebug({
   }, [provider, ydoc, awareness]);
 
   return (
-    <div className="fixed top-4 right-4 bg-black/80 text-white p-4 rounded-lg font-mono text-xs max-w-sm z-50">
+    <div className="fixed bottom-4 right-4 bg-black/80 text-white p-4 rounded-lg font-mono text-xs max-w-sm z-50">
       <div className="mb-2">
         <strong>Collaboration Status</strong>
       </div>
