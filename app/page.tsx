@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useEffect } from "react";
 import type { Value } from "@udecode/plate";
+import * as Y from "yjs";
+import { Awareness } from "y-protocols/awareness";
 
 import { BasicElementsPlugin } from "@udecode/plate-basic-elements/react";
 import { BasicMarksPlugin } from "@udecode/plate-basic-marks/react";
@@ -15,8 +17,6 @@ import {
 } from "@udecode/plate/react";
 import { RemoteCursorOverlay } from "@/components/ui/remote-cursor-overlay";
 import { YjsPlugin } from "@udecode/plate-yjs/react";
-import * as Y from "yjs";
-import { Awareness } from "y-protocols/awareness";
 import { BlockquoteElement } from "@/components/ui/blockquote-element";
 import { Editor, EditorContainer } from "@/components/ui/editor";
 import { FixedToolbar } from "@/components/ui/fixed-toolbar";
@@ -24,9 +24,10 @@ import { HeadingElement } from "@/components/ui/heading-element";
 
 import { MarkToolbarButton } from "@/components/ui/mark-toolbar-button";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
-import { ToolbarButton } from "@/components/ui/toolbar"; // Generic toolbar button
-import { createClient } from "@/lib/supabase/client";
+import { ToolbarButton } from "@/components/ui/toolbar";
 import { useMounted } from "@/hooks/use-mounted";
+import { SupabaseProvider } from "@/lib/providers/unified-providers";
+import { CollaborationDebug } from "@/components/ui/collaboration-debug";
 
 const initialValue: Value = [
   { type: "h3", children: [{ text: "Title" }] },
@@ -34,85 +35,80 @@ const initialValue: Value = [
   {
     type: "p",
     children: [
-      { text: "With some " },
-      { text: "bold", bold: true },
-      { text: " text for emphasis!" },
+      { text: "Please note that this is a " },
+      { text: "temporary", bold: true },
+      { text: " editor!" },
     ],
+  },
+  {
+    type: "p",
+    children: [{ text: "Changes will not be saved here." }],
   },
 ];
 
-type WebRTCProviderConfig = {
-  type: "webrtc";
-  options: {
-    // WebRTCProviderOptions
-    roomName: string; // Room name for collaboration (must match other clients)
-    signaling?: string[]; // Optional signaling server URLs (defaults to public servers)
-    password?: string; // Optional room password
-    maxConns?: number; // Max WebRTC connections
-    filterBcConns?: boolean; // Filter broadcast connections
-    peerOpts?: Record<string, unknown>; // Options passed to simple-peer (e.g., for ICE/TURN servers)
-  };
-};
+// Example: Instantiate your SupabaseProvider
+// You'll need to provide actual values for channelName, username, and documentId
+const documentId = "5eb6f176-fc34-45a8-bdca-abf08a9118f5"; // Or get this dynamically
+const username = `User-${Math.floor(Math.random() * 100)}`; // Or get this from auth
+const channelName = `plate-editor-${documentId}`;
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-interface UnifiedProvider {
-  awareness: Awareness; // Must use the shared Awareness instance
-  document: Y.Doc; // Must use the shared Y.Doc instance
-  type: string; // Unique type identifier (e.g., 'indexeddb')
-  connect: () => void; // Logic to establish connection/load data
-  destroy: () => void; // Cleanup logic (called by editor.api.yjs.destroy)
-  disconnect: () => void; // Logic to disconnect/save data
-  isConnected: boolean; // Provider's connection status
-  isSynced: boolean; // Provider's data sync status
-}
+// Generate a consistent color for this user session
+const userColor = `#${Math.floor(Math.random() * 16777215)
+  .toString(16)
+  .padStart(6, "0")}`;
+
+// Create Y.Doc and Awareness instances that we'll share between YjsPlugin and our custom provider
+const ydoc = new Y.Doc();
+const awareness = new Awareness(ydoc);
+
+// Create our custom SupabaseProvider with the shared instances
+const supabaseProvider = new SupabaseProvider(
+  ydoc,
+  awareness,
+  channelName,
+  username,
+  documentId
+);
 
 export default function MyEditorPage() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const supabase = createClient();
   const mounted = useMounted();
-  // WebRTCProviderConfig
-  const webRTCProvider: WebRTCProviderConfig = {
-    type: "webrtc",
-    options: {
-      roomName: "my-document-id", // Unique identifier for the document
-      signaling: ["ws://localhost:4444"], // Optional signaling server URLs
-      // password: "your-password", // Optional room password
-      maxConns: 10, // Max WebRTC connections
-      filterBcConns: true, // Filter broadcast connections
-      peerOpts: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }, // STUN server for NAT traversal
-    },
-  };
 
   const editor = usePlateEditor({
     plugins: [
       BasicElementsPlugin,
       BasicMarksPlugin,
       YjsPlugin.configure({
-        // Render remote cursors using the overlay component
         render: {
           afterEditable: RemoteCursorOverlay,
         },
-        // Yjs Plugin Options
         options: {
-          // Configure local user cursor appearance
+          // Provide our own Y.Doc and Awareness instances
+          ydoc: ydoc,
+          awareness: awareness,
           cursors: {
             data: {
-              name: "User Name", // Replace with dynamic user name
-              color: "#aabbcc", // Replace with dynamic user color
+              name: username,
+              color: userColor,
             },
           },
-
-          // Configure providers. All providers share the same Y.Doc and Awareness instance.
-          providers: [
-            // Use the webRTCProvider config
-            webRTCProvider,
-          ],
+          // Pass our custom provider instance
+          providers: [supabaseProvider],
+          onConnect: ({ type }) =>
+            console.log(`[YjsPlugin] Provider ${type} connected!`),
+          onDisconnect: ({ type }) =>
+            console.log(`[YjsPlugin] Provider ${type} disconnected.`),
+          onError: ({ type, error }) =>
+            console.error(`[YjsPlugin] Error in provider ${type}:`, error),
+          onSyncChange: ({ type, isSynced }) =>
+            console.log(
+              `[YjsPlugin] Provider ${type} sync status: ${isSynced}`
+            ),
         },
       }),
-    ], // Add plugins
+    ],
     value: initialValue,
+    skipInitialization: true,
     components: {
-      // Element components
       blockquote: BlockquoteElement,
       p: ParagraphElement,
       h1: (props: PlateElementProps) => (
@@ -124,28 +120,91 @@ export default function MyEditorPage() {
       h3: (props: PlateElementProps) => (
         <HeadingElement {...props} variant="h3" />
       ),
-      // Mark components (from previous step)
       bold: (props: PlateLeafProps) => <PlateLeaf {...props} as="strong" />,
       italic: (props: PlateLeafProps) => <PlateLeaf {...props} as="em" />,
       underline: (props: PlateLeafProps) => <PlateLeaf {...props} as="u" />,
     },
   });
-
   useEffect(() => {
-    // Ensure component is mounted and editor is ready
-    if (!mounted) return;
+    console.log("🔧 Manually connecting SupabaseProvider...");
+    console.log("Provider instance:", supabaseProvider);
+    console.log("Provider type:", supabaseProvider.type);
+    console.log("Provider connected:", supabaseProvider.isConnected);
+    supabaseProvider.connect();
+    console.log(
+      "Provider connected after connect():",
+      supabaseProvider.isConnected
+    );
 
-    // Initialize Yjs connection, sync document, and set initial editor state
+    // Ensure component is mounted and editor is ready
+    if (!mounted) {
+      console.log("[MyEditorPage] useEffect: Component not mounted yet.");
+      return;
+    }
+    console.log("[MyEditorPage] useEffect: Component mounted, editor ready."); // Initialize Yjs connection, sync document, and set initial editor state
+    console.log("[MyEditorPage] useEffect: Calling yjs.init().");
     editor.getApi(YjsPlugin).yjs.init({
-      id: "1", // Unique identifier for the Yjs document
+      id: documentId, // Use the same documentId
       value: initialValue, // Initial content if the Y.Doc is empty
     });
+    // Add debug info about awareness and cursors
+    setTimeout(() => {
+      console.log("🎯 Post-init debug info:", {
+        yjsPluginOptions: editor.getOptions(YjsPlugin),
+        awarenessState: awareness.getLocalState(),
+        awarenessStates: Array.from(awareness.getStates().entries()),
+        supabaseConnected: supabaseProvider.isConnected,
+        supabaseSynced: supabaseProvider.isSynced,
+      });
+    }, 2000);
 
-    // Clean up: Destroy connection when component unmounts
+    // Add more frequent debugging to monitor cursor updates
+    const debugInterval = setInterval(() => {
+      const awarenessStates = Array.from(awareness.getStates().entries());
+      console.log("🔄 Awareness states update:", {
+        localClientId: awareness.clientID,
+        totalStates: awarenessStates.length,
+        states: awarenessStates,
+        remoteCursors: awarenessStates.filter(
+          ([clientId]) => clientId !== awareness.clientID
+        ),
+      });
+    }, 5000); // Clear interval on cleanup
     return () => {
+      clearInterval(debugInterval);
+      console.log("[MyEditorPage] useEffect cleanup: Calling yjs.destroy().");
       editor.getApi(YjsPlugin).yjs.destroy();
+      supabaseProvider.disconnect();
     };
   }, [editor, mounted]);
+  // Add selection change debugging
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      if (editor?.selection) {
+        console.log("📍 Selection changed:", {
+          selection: editor.selection,
+          clientId: awareness.clientID,
+          localState: awareness.getLocalState(),
+        });
+      }
+    };
+
+    // Listen to selection changes in the editor
+    if (mounted && editor) {
+      // Add a simple selection change listener
+      const originalOnChange = editor.onChange;
+      if (typeof originalOnChange === "function") {
+        editor.onChange = (value: Value) => {
+          originalOnChange(value);
+          handleSelectionChange();
+        };
+      } else {
+        editor.onChange = () => {
+          handleSelectionChange();
+        };
+      }
+    }
+  }, [mounted, editor]);
 
   return (
     <Plate editor={editor}>
@@ -177,6 +236,11 @@ export default function MyEditorPage() {
       <EditorContainer>
         <Editor placeholder="Type your amazing content here..." />
       </EditorContainer>
+      <CollaborationDebug
+        provider={supabaseProvider}
+        ydoc={ydoc}
+        awareness={awareness}
+      />
     </Plate>
   );
 }
