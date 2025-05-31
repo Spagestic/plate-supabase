@@ -66,7 +66,7 @@ export function CollaborationDebug({
   return (
     <div className="fixed bottom-4 right-4 bg-black/80 text-white p-4 rounded-lg font-mono text-xs max-w-sm z-50">
       <div className="mb-2">
-        <strong>Collaboration Status</strong>
+        <span className="font-bold">Collaboration Status</span>
       </div>
       <div className="mb-1">
         Status:{" "}
