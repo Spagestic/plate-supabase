@@ -14,11 +14,9 @@ import { BlockquoteElement } from "@/components/ui/blockquote-element";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
 import { HeadingElement } from "@/components/ui/heading-element";
 import { PlateLeaf } from "@udecode/plate/react";
-import type {
-  PlateElementProps,
-  PlateLeafProps,
-} from "@udecode/plate/react";
+import type { PlateElementProps, PlateLeafProps } from "@udecode/plate/react";
 import { usePlateEditor } from "@udecode/plate/react";
+import { CollaborationDebug } from "@/components/ui/collaboration-debug";
 
 export default function TeporaryPlateEditorPage() {
   const mounted = useMounted();
@@ -28,6 +26,11 @@ export default function TeporaryPlateEditorPage() {
   );
   const { username, userColor, ydoc, awareness, supabaseProvider } =
     useProviderSetup(documentId);
+
+  const [isFirstUser, setIsFirstUser] = React.useState<boolean | null>(null);
+  const [isSynced, setIsSynced] = React.useState(false);
+  const [hasCheckedCollaborationState, setHasCheckedCollaborationState] =
+    React.useState(false);
 
   const editor = usePlateEditor({
     plugins: [
@@ -53,10 +56,14 @@ export default function TeporaryPlateEditorPage() {
             console.log(`[YjsPlugin] Provider ${type} disconnected.`),
           onError: ({ type, error }) =>
             console.error(`[YjsPlugin] Error in provider ${type}:`, error),
-          onSyncChange: ({ type, isSynced }) =>
+          onSyncChange: ({ type, isSynced }) => {
             console.log(
               `[YjsPlugin] Provider ${type} sync status: ${isSynced}`
-            ),
+            );
+            if (type === "supabase") {
+              setIsSynced(isSynced);
+            }
+          },
         },
       }),
     ],
@@ -84,17 +91,45 @@ export default function TeporaryPlateEditorPage() {
     if (!mounted || !editor) return;
     awareness.setLocalStateField("data", { name: username, color: userColor });
     supabaseProvider.connect();
-    editor
-      .getApi(YjsPlugin)
-      .yjs.init({ id: documentId, value: fallbackInitialValue });
+
+    // Check if this is the first user
+    const checkFirstUserStatus = () => {
+      const awarenessStates = Array.from(awareness.getStates().entries());
+      // If there's only one user (this user) or this user has the lowest clientID
+      if (awarenessStates.length <= 1) {
+        setIsFirstUser(true);
+      } else {
+        const clientIds = awarenessStates.map(([clientId]) => clientId);
+        const isFirst = Math.min(...clientIds) === awareness.clientID;
+        setIsFirstUser(isFirst);
+      }
+      setHasCheckedCollaborationState(true);
+    };
+
+    // Initialize after a short delay to allow awareness to update
+    const initTimer = setTimeout(() => {
+      checkFirstUserStatus();
+      editor
+        .getApi(YjsPlugin)
+        .yjs.init({ id: documentId, value: fallbackInitialValue });
+    }, 300);
+
     const syncInterval = setInterval(() => {
       if (supabaseProvider.isSynced) {
         editor.setOption(YjsPlugin, "_isSynced", true);
+        setIsSynced(true);
         editor
           .getPlugin(YjsPlugin)
           ?.options.onSyncChange?.({ type: "supabase", isSynced: true });
       }
     }, 500);
+
+    const awarenessChangeHandler = () => {
+      checkFirstUserStatus();
+    };
+
+    awareness.on("change", awarenessChangeHandler);
+
     const debugInterval = setInterval(() => {
       const awarenessStates = Array.from(awareness.getStates().entries());
       const remoteStates = awarenessStates.filter(
@@ -128,9 +163,12 @@ export default function TeporaryPlateEditorPage() {
           !!awareness.getLocalState()?.[cursorDataField],
       });
     }, 5000);
+
     return () => {
+      clearTimeout(initTimer);
       clearInterval(syncInterval);
       clearInterval(debugInterval);
+      awareness.off("change", awarenessChangeHandler);
       editor.getApi(YjsPlugin).yjs.destroy();
       supabaseProvider.destroy();
     };
@@ -148,12 +186,41 @@ export default function TeporaryPlateEditorPage() {
     return null;
   }
 
+  // Show loading state when not the first user and not synced yet
+  const showLoading = !isFirstUser && !isSynced && hasCheckedCollaborationState;
+
   return (
-    <PlateEditorContainer
-      editor={editor}
-      supabaseProvider={supabaseProvider}
-      ydoc={ydoc}
-      awareness={awareness}
-    />
+    <>
+      {showLoading ? (
+        <div className="flex items-center justify-center h-screen">
+          <div className="text-center">
+            <div className="mb-4">
+              <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            </div>
+            <p className="text-lg font-medium">
+              Loading collaborative document...
+            </p>
+            <p className="text-sm text-gray-500 mt-2">
+              Waiting for data synchronization
+            </p>
+          </div>
+        </div>
+      ) : (
+        <PlateEditorContainer
+          editor={editor}
+          supabaseProvider={supabaseProvider}
+          ydoc={ydoc}
+          awareness={awareness}
+        />
+      )}
+
+      <CollaborationDebug
+        provider={supabaseProvider}
+        ydoc={ydoc}
+        awareness={awareness}
+        isFirstUser={isFirstUser || false}
+        hasCheckedCollaborationState={hasCheckedCollaborationState}
+      />
+    </>
   );
 }
