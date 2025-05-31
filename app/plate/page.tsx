@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { Value } from "@udecode/plate";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
@@ -29,7 +29,7 @@ import { useMounted } from "@/hooks/use-mounted";
 import { SupabaseProvider } from "@/lib/providers/unified-providers";
 import { CollaborationDebug } from "@/components/ui/collaboration-debug";
 
-const initialValue: Value = [
+const fallbackInitialValue: Value = [
   { type: "h3", children: [{ text: "Title" }] },
   { type: "blockquote", children: [{ text: "This is a quote." }] },
   {
@@ -68,6 +68,39 @@ const supabaseProvider = new SupabaseProvider(
 
 export default function MyEditorPage() {
   const mounted = useMounted();
+  const [initialValue, setInitialValue] = useState<Value>(fallbackInitialValue);
+  const [isContentLoaded, setIsContentLoaded] = useState(false);
+
+  // Load initial content from database
+  useEffect(() => {
+    async function loadInitialContent() {
+      try {
+        console.log("🔍 Loading initial content from database...");
+        await supabaseProvider.preloadDatabaseContent();
+
+        const databaseContent = supabaseProvider.getDatabaseContent();
+        if (databaseContent && Array.isArray(databaseContent)) {
+          console.log(
+            "✅ Using database content as initial value:",
+            databaseContent
+          );
+          setInitialValue(databaseContent);
+        } else {
+          console.log(
+            "📝 No database content found, using fallback initial value"
+          );
+          setInitialValue(fallbackInitialValue);
+        }
+      } catch (error) {
+        console.error("❌ Error loading initial content:", error);
+        setInitialValue(fallbackInitialValue);
+      } finally {
+        setIsContentLoaded(true);
+      }
+    }
+
+    loadInitialContent();
+  }, []);
 
   const editor = usePlateEditor({
     plugins: [
@@ -121,7 +154,16 @@ export default function MyEditorPage() {
       underline: (props: PlateLeafProps) => <PlateLeaf {...props} as="u" />,
     },
   });
+
   useEffect(() => {
+    // Only initialize editor after content is loaded
+    if (!isContentLoaded || !mounted) {
+      console.log(
+        "[MyEditorPage] Waiting for content to load or component to mount"
+      );
+      return;
+    }
+
     console.log("🔧 Manually connecting SupabaseProvider...");
     console.log("Provider instance:", supabaseProvider);
     console.log("Provider type:", supabaseProvider.type);
@@ -132,17 +174,18 @@ export default function MyEditorPage() {
       supabaseProvider.isConnected
     );
 
-    // Ensure component is mounted and editor is ready
-    if (!mounted) {
-      console.log("[MyEditorPage] useEffect: Component not mounted yet.");
-      return;
-    }
-    console.log("[MyEditorPage] useEffect: Component mounted, editor ready."); // Initialize Yjs connection, sync document, and set initial editor state
-    console.log("[MyEditorPage] useEffect: Calling yjs.init().");
+    console.log(
+      "[MyEditorPage] useEffect: Component mounted, editor ready with loaded content"
+    );
+    // Initialize Yjs connection, sync document, and set initial editor state
+    console.log(
+      "[MyEditorPage] useEffect: Calling yjs.init() with loaded content"
+    );
     editor.getApi(YjsPlugin).yjs.init({
       id: documentId, // Use the same documentId
-      value: initialValue, // Initial content if the Y.Doc is empty
+      value: initialValue, // Use the loaded content from database
     });
+
     // Add debug info about awareness and cursors
     setTimeout(() => {
       console.log("🎯 Post-init debug info:", {
@@ -151,6 +194,7 @@ export default function MyEditorPage() {
         awarenessStates: Array.from(awareness.getStates().entries()),
         supabaseConnected: supabaseProvider.isConnected,
         supabaseSynced: supabaseProvider.isSynced,
+        initialValueUsed: initialValue,
       });
     }, 2000);
 
@@ -165,14 +209,17 @@ export default function MyEditorPage() {
           ([clientId]) => clientId !== awareness.clientID
         ),
       });
-    }, 5000); // Clear interval on cleanup
+    }, 5000);
+
+    // Clear interval on cleanup
     return () => {
       clearInterval(debugInterval);
       console.log("[MyEditorPage] useEffect cleanup: Calling yjs.destroy().");
       editor.getApi(YjsPlugin).yjs.destroy();
       supabaseProvider.disconnect();
     };
-  }, [editor, mounted]);
+  }, [editor, mounted, isContentLoaded, initialValue]);
+
   // Add selection change debugging
   useEffect(() => {
     const handleSelectionChange = () => {
@@ -186,7 +233,7 @@ export default function MyEditorPage() {
     };
 
     // Listen to selection changes in the editor
-    if (mounted && editor) {
+    if (mounted && editor && isContentLoaded) {
       // Add a simple selection change listener
       const originalOnChange = editor.onChange;
       if (typeof originalOnChange === "function") {
@@ -200,7 +247,19 @@ export default function MyEditorPage() {
         };
       }
     }
-  }, [mounted, editor]);
+  }, [mounted, editor, isContentLoaded]);
+
+  // Show loading state while content is being loaded
+  if (!isContentLoaded) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-muted mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Loading document...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Plate editor={editor}>
