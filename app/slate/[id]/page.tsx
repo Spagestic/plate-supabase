@@ -7,7 +7,7 @@ import { useCollaboration } from "@/hooks//slate/use-collaboration";
 import { CollaborativeEditor } from "@/components/slate/CollaborativeEditor";
 import { useParams } from "next/navigation";
 
-export default function UnifiedProviderDemo() {
+export default function SlateEditorPage() {
   const { id } = useParams();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [enableIndexedDB, setEnableIndexedDB] = useState(false);
