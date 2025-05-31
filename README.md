@@ -4,8 +4,9 @@ This project is an attempt to use **Supabase Realtime** for collaborative editin
 
 - **Supabase Realtime** already works with **Slate** and **Quill** editors in this repo.
 - **Supabase provider now works with Plate for collaborative editing!**
+- **Realtime cursors & selection are supported** for collaborative editing.
 - **Saving to Database** is implemented for `/slate` and `/plate` routes.
-- **TODO:** Remote cursors and selection configuration for Plate (see `app/page.tsx` and `lib/providers/unified-providers.ts`).
+  `
 
 ---
 
