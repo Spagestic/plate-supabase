@@ -17,31 +17,21 @@ import {
 import { RemoteCursorOverlay } from "@/components/ui/remote-cursor-overlay";
 import { YjsPlugin } from "@udecode/plate-yjs/react";
 import { BlockquoteElement } from "@/components/ui/blockquote-element";
-import { Editor, EditorContainer } from "@/components/ui/editor";
-import { FixedToolbar } from "@/components/ui/fixed-toolbar";
 import { HeadingElement } from "@/components/ui/heading-element";
-import { MarkToolbarButton } from "@/components/ui/mark-toolbar-button";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
-import { ToolbarButton } from "@/components/ui/toolbar";
 import { useMounted } from "@/hooks/use-mounted";
 import { SupabaseProvider } from "@/lib/providers/unified-providers";
 import { CollaborationDebug } from "@/components/ui/collaboration-debug";
-const fallbackInitialValue: Value = [
-  { type: "h3", children: [{ text: "Title" }] },
-  { type: "blockquote", children: [{ text: "This is a quote." }] },
-  {
-    type: "p",
-    children: [
-      { text: "With some " },
-      { text: "bold", bold: true },
-      { text: " text for emphasis!" },
-    ],
-  },
-];
+import { LoadingIndicator } from "./LoadingIndicator";
+import { PlateToolbar } from "./PlateToolbar";
+import { PlateEditorContainer } from "./PlateEditorContainer";
+import { fallbackInitialValue } from "./fallbackInitialValue";
+
 // Example: Instantiate your SupabaseProvider
 // You'll need to provide actual values for channelName, username, and documentId
 const documentId = "5eb6f176-fc34-45a8-bdca-abf08a9118f5"; // Or get this dynamically
 const username = `User-${Math.floor(Math.random() * 100)}`; // Or get this from auth
+
 const channelName = `plate-editor-${documentId}`;
 // Generate a consistent color for this user session
 const userColor = `#${Math.floor(Math.random() * 16777215)
@@ -64,29 +54,33 @@ export default function PlateEditorPage() {
   const [isContentLoaded, setIsContentLoaded] = useState(false);
   const [isEditorInitialized, setIsEditorInitialized] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const supabase = createClient();// Document saving function with debouncing and validation
+  const supabase = createClient(); // Document saving function with debouncing and validation
   const saveDocument = useCallback(
     async (content: Value) => {
       // Validate content before saving
       if (!content || !Array.isArray(content) || content.length === 0) {
         console.warn("⚠️ Skipping save: Content is empty or invalid", content);
         return;
-      }      // Additional validation: check if content has meaningful data
-      const hasContent = content.some(node => {
+      } // Additional validation: check if content has meaningful data
+      const hasContent = content.some((node) => {
         if (node.children && Array.isArray(node.children)) {
-          return node.children.some(child => 
-            typeof child === 'object' && 
-            child && 
-            'text' in child && 
-            typeof child.text === 'string' && 
-            child.text.trim().length > 0
+          return node.children.some(
+            (child) =>
+              typeof child === "object" &&
+              child &&
+              "text" in child &&
+              typeof child.text === "string" &&
+              child.text.trim().length > 0
           );
         }
         return false;
       });
 
       if (!hasContent) {
-        console.warn("⚠️ Skipping save: Content appears to be empty (no meaningful text)", content);
+        console.warn(
+          "⚠️ Skipping save: Content appears to be empty (no meaningful text)",
+          content
+        );
         return;
       }
 
@@ -94,7 +88,7 @@ export default function PlateEditorPage() {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
-      
+
       // Set a short timeout to batch rapid changes while maintaining responsiveness
       saveTimeoutRef.current = setTimeout(async () => {
         try {
@@ -237,7 +231,8 @@ export default function PlateEditorPage() {
     // Initialize Yjs connection, sync document, and set initial editor state
     console.log(
       "[MyEditorPage] useEffect: Calling yjs.init() with loaded content"
-    );    editor.getApi(YjsPlugin).yjs.init({
+    );
+    editor.getApi(YjsPlugin).yjs.init({
       id: documentId, // Use the same documentId
       value: initialValue, // Use the loaded content from database
     });
@@ -269,8 +264,8 @@ export default function PlateEditorPage() {
           ([clientId]) => clientId !== awareness.clientID
         ),
       });
-    }, 5000); 
-    
+    }, 5000);
+
     // Clear interval on cleanup
     return () => {
       clearInterval(debugInterval);
@@ -294,8 +289,9 @@ export default function PlateEditorPage() {
           clientId: awareness.clientID,
           localState: awareness.getLocalState(),
         });
-      }    };
-    
+      }
+    };
+
     // Listen to YJS document updates (when content actually changes)
     const handleYjsUpdate = (update: Uint8Array, origin: unknown) => {
       // Only save if this is NOT a remote change from Supabase
@@ -310,11 +306,14 @@ export default function PlateEditorPage() {
 
       // Don't save during initialization to prevent empty content saves
       if (!isEditorInitialized) {
-        console.log("🔄 YJS document updated during initialization (skipping save):", {
-          origin,
-          updateSize: update.length,
-          isEditorInitialized,
-        });
+        console.log(
+          "🔄 YJS document updated during initialization (skipping save):",
+          {
+            origin,
+            updateSize: update.length,
+            isEditorInitialized,
+          }
+        );
         return;
       }
 
@@ -333,11 +332,14 @@ export default function PlateEditorPage() {
           content: currentContent,
           contentLength: currentContent?.length,
         });
-        
+
         if (currentContent && Array.isArray(currentContent)) {
           saveDocument(currentContent);
         } else {
-          console.warn("⚠️ Skipping save: editor.children is not a valid array", currentContent);
+          console.warn(
+            "⚠️ Skipping save: editor.children is not a valid array",
+            currentContent
+          );
         }
       } catch (error) {
         console.error("Error converting YJS content for saving:", error);
@@ -364,45 +366,12 @@ export default function PlateEditorPage() {
   }, [mounted, editor, isContentLoaded, saveDocument, isEditorInitialized]);
   // Show loading state while content is being loaded
   if (!isContentLoaded) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-muted mx-auto"></div>
-          <p className="mt-2 text-muted-foreground">Loading document...</p>
-        </div>
-      </div>
-    );
+    return <LoadingIndicator />;
   }
   return (
     <Plate editor={editor}>
-      <FixedToolbar className="flex justify-start gap-1 rounded-t-lg">
-        {/* Element Toolbar Buttons */}
-        <ToolbarButton onClick={() => editor.tf.toggleBlock("h1")}>
-          H1
-        </ToolbarButton>
-        <ToolbarButton onClick={() => editor.tf.toggleBlock("h2")}>
-          H2
-        </ToolbarButton>
-        <ToolbarButton onClick={() => editor.tf.toggleBlock("h3")}>
-          H3
-        </ToolbarButton>
-        <ToolbarButton onClick={() => editor.tf.toggleBlock("blockquote")}>
-          Quote
-        </ToolbarButton>
-        {/* Mark Toolbar Buttons */}
-        <MarkToolbarButton nodeType="bold" tooltip="Bold (⌘+B)">
-          B
-        </MarkToolbarButton>
-        <MarkToolbarButton nodeType="italic" tooltip="Italic (⌘+I)">
-          I
-        </MarkToolbarButton>
-        <MarkToolbarButton nodeType="underline" tooltip="Underline (⌘+U)">
-          U
-        </MarkToolbarButton>
-      </FixedToolbar>
-      <EditorContainer>
-        <Editor placeholder="Type your amazing content here..." />
-      </EditorContainer>
+      <PlateToolbar editor={editor} />
+      <PlateEditorContainer />
       <CollaborationDebug
         provider={supabaseProvider}
         ydoc={ydoc}
