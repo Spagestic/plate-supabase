@@ -3,7 +3,9 @@
 This project is an attempt to use **Supabase Realtime** for collaborative editing with [Plate](https://platejs.org/), [Slate](https://docs.slatejs.org/), and [Quill](https://quilljs.com/).
 
 - **Supabase Realtime** already works with **Slate** and **Quill** editors in this repo.
-- **TODO:** Configure the Supabase provider for Plate (see `app/plate/page.tsx` and `lib/providers/unified-providers.ts`).
+- **Supabase provider now works with Plate for collaborative editing!**
+- **TODO:** Remote cursors and selection configuration for Plate (see `app/plate/page.tsx` and `lib/providers/unified-providers.ts`).
+- **TODO:** Syncing data with the database for Plate.
 
 ---
 
