@@ -25,8 +25,8 @@ import { HeadingElement } from "@/components/ui/heading-element";
 import { MarkToolbarButton } from "@/components/ui/mark-toolbar-button";
 import { ParagraphElement } from "@/components/ui/paragraph-element";
 import { ToolbarButton } from "@/components/ui/toolbar";
-// import { useMounted } from "@/hooks/use-mounted"; // Temporarily commented out
 import { SupabaseProvider } from "@/lib/providers/unified-providers";
+import { useMounted } from "@/hooks/use-mounted"; // use actual mount detection
 import { CollaborationDebug } from "@/components/ui/collaboration-debug";
 import { CursorDebug } from "@/components/ui/cursor-debug";
 
@@ -47,67 +47,76 @@ const initialValue: Value = [
   },
 ];
 
-// Example: Instantiate your SupabaseProvider
-// You'll need to provide actual values for channelName, username, and documentId
-const documentId = "5eb6f176-fc34-45a8-bdca-abf08a9118f5"; // Or get this dynamically
-const username = `User-${Math.floor(Math.random() * 100)}`; // Or get this from auth
-const channelName = `temp-plate-editor-${documentId}`;
-
-// Generate a consistent color for this user session
-const userColor = `#${Math.floor(Math.random() * 16777215)
-  .toString(16)
-  .padStart(6, "0")}`;
-
-// Create Y.Doc and Awareness instances that we'll share between YjsPlugin and our custom provider
-const ydoc = new Y.Doc();
-const awareness = new Awareness(ydoc);
-
-// Create callback functions for the provider
-const onConnect = () => console.log(`[SupabaseProvider] Connected!`);
-const onDisconnect = () => console.log(`[SupabaseProvider] Disconnected.`);
-const onError = (error: Error) =>
-  console.error(`[SupabaseProvider] Error:`, error);
-const onSyncChange = (isSynced: boolean) => {
-  console.log(`[SupabaseProvider] Sync status: ${isSynced}`);
-  // This is the key - when SupabaseProvider becomes synced, YjsPlugin should know
-};
-
-// Create our custom SupabaseProvider with the shared instances and callbacks
-const supabaseProvider = new SupabaseProvider(
-  ydoc,
-  awareness,
-  channelName,
-  username,
-  documentId,
-  {
-    onConnect,
-    onDisconnect,
-    onError,
-    onSyncChange,
-  }
-);
-
 export default function TeporaryPlateEditorPage() {
-  console.log("🎯 Component rendering...");
-  // const mounted = useMounted();
-  const [mounted] = React.useState(true); // Temporary fix to test useEffect
-  console.log("🎯 Mounted state:", mounted);
+  const mounted = useMounted();
+
+  // collaboration state: unique per component instance
+  const documentId = React.useMemo(
+    () => "5eb6f176-fc34-45a8-bdca-abf08a9118f5",
+    []
+  );
+  const username = React.useMemo(
+    () => `User-${Math.floor(Math.random() * 100)}`,
+    []
+  );
+  const channelName = React.useMemo(
+    () => `temp-plate-editor-${documentId}`,
+    [documentId]
+  );
+  const userColor = React.useMemo(
+    () =>
+      `#${Math.floor(Math.random() * 0xffffff)
+        .toString(16)
+        .padStart(6, "0")}`,
+    []
+  );
+  const ydoc = React.useMemo(() => new Y.Doc(), []);
+  const awareness = React.useMemo(() => new Awareness(ydoc), [ydoc]);
+  const onConnect = React.useCallback(
+    () => console.log("[SupabaseProvider] Connected!"),
+    []
+  );
+  const onDisconnect = React.useCallback(
+    () => console.log("[SupabaseProvider] Disconnected."),
+    []
+  );
+  const onError = React.useCallback(
+    (err: Error) => console.error("[SupabaseProvider] Error:", err),
+    []
+  );
+  const onSyncChange = React.useCallback(
+    (synced: boolean) => console.log("[SupabaseProvider] Sync status:", synced),
+    []
+  );
+  const supabaseProvider = React.useMemo(
+    () =>
+      new SupabaseProvider(ydoc, awareness, channelName, username, documentId, {
+        onConnect,
+        onDisconnect,
+        onError,
+        onSyncChange,
+      }),
+    [
+      ydoc,
+      awareness,
+      channelName,
+      username,
+      documentId,
+      onConnect,
+      onDisconnect,
+      onError,
+      onSyncChange,
+    ]
+  );
+
   // Add a simple effect to debug the mounting process
   useEffect(() => {
-    try {
-      console.log("🔍 Simple useEffect running, mounted:", mounted);
-    } catch (error) {
-      console.error("❌ Error in simple useEffect:", error);
-    }
+    if (mounted) console.log("🔍 Component mounted");
   }, [mounted]);
 
   // Add a basic effect without dependencies
   useEffect(() => {
-    try {
-      console.log("✅ Basic useEffect running (no deps)");
-    } catch (error) {
-      console.error("❌ Error in basic useEffect:", error);
-    }
+    console.log("✅ Basic useEffect running (no deps)");
   }, []);
 
   const editor = usePlateEditor({
@@ -164,70 +173,20 @@ export default function TeporaryPlateEditorPage() {
   });
 
   useEffect(() => {
-    console.log("🔧 useEffect running! Editor ready:", !!editor);
-
-    if (!editor) {
-      console.log("❌ Editor not ready yet, skipping provider connection");
-      return;
-    }
-
-    console.log("🔧 Manually connecting SupabaseProvider...");
-    console.log("Provider instance:", supabaseProvider);
-    console.log("Provider type:", supabaseProvider.type);
-    console.log("Provider connected:", supabaseProvider.isConnected);
-
-    // Set up awareness with cursor data BEFORE connecting
-    awareness.setLocalStateField("data", {
-      name: username,
-      color: userColor,
-    });
-
-    // Connect the provider
+    if (!mounted || !editor) return;
+    // initialize awareness and connect
+    awareness.setLocalStateField("data", { name: username, color: userColor });
     supabaseProvider.connect();
-    console.log(
-      "Provider connected after connect():",
-      supabaseProvider.isConnected
-    );
-
-    // Initialize editor regardless of mounted state for testing
-    console.log("[MyEditorPage] useEffect: Calling yjs.init().");
-    editor.getApi(YjsPlugin).yjs.init({
-      id: documentId, // Use the same documentId
-      value: initialValue, // Initial content if the Y.Doc is empty
-    });
-
-    // Force YjsPlugin to recognize the provider as synced when SupabaseProvider becomes synced
-    const checkSyncStatus = () => {
+    editor.getApi(YjsPlugin).yjs.init({ id: documentId, value: initialValue });
+    // periodic sync check and debug intervals
+    const syncInterval = setInterval(() => {
       if (supabaseProvider.isSynced) {
-        // Manually update YjsPlugin sync status
         editor.setOption(YjsPlugin, "_isSynced", true);
-
-        // Alternative: trigger the plugin's sync change callback
-        const yjsPlugin = editor.getPlugin(YjsPlugin);
-        if (yjsPlugin?.options.onSyncChange) {
-          yjsPlugin.options.onSyncChange({ type: "supabase", isSynced: true });
-        }
-
-        console.log("✅ YjsPlugin sync status updated to true");
+        editor
+          .getPlugin(YjsPlugin)
+          ?.options.onSyncChange?.({ type: "supabase", isSynced: true });
       }
-    };
-
-    // Check sync status periodically
-    const syncCheckInterval = setInterval(checkSyncStatus, 500);
-
-    // Add debug info about awareness and cursors
-    setTimeout(() => {
-      console.log("🎯 Post-init debug info:", {
-        yjsPluginOptions: editor.getOptions(YjsPlugin),
-        awarenessState: awareness.getLocalState(),
-        awarenessStates: Array.from(awareness.getStates().entries()),
-        supabaseConnected: supabaseProvider.isConnected,
-        supabaseSynced: supabaseProvider.isSynced,
-        yjsPluginSynced: editor.getOption(YjsPlugin, "_isSynced"),
-      });
-    }, 2000);
-
-    // Add more frequent debugging to monitor cursor updates
+    }, 500);
     const debugInterval = setInterval(() => {
       const awarenessStates = Array.from(awareness.getStates().entries());
       const remoteStates = awarenessStates.filter(
@@ -261,54 +220,22 @@ export default function TeporaryPlateEditorPage() {
           !!awareness.getLocalState()?.[cursorDataField],
       });
     }, 5000);
-
-    // Clear intervals on cleanup
     return () => {
+      clearInterval(syncInterval);
       clearInterval(debugInterval);
-      clearInterval(syncCheckInterval);
-      console.log("[MyEditorPage] useEffect cleanup: Calling yjs.destroy().");
       editor.getApi(YjsPlugin).yjs.destroy();
-      supabaseProvider.disconnect();
+      supabaseProvider.destroy();
     };
-  }, [editor]);
-  useEffect(() => {
-    if (!mounted || !editor) return;
+  }, [
+    editor,
+    mounted,
+    awareness,
+    supabaseProvider,
+    username,
+    userColor,
+    documentId,
+  ]);
 
-    // Use the original editor.onChange to avoid interference
-    const originalOnChange = editor.onChange;
-
-    // Create a type-safe wrapper for originalOnChange
-    const safeOriginalOnChange = (value: Value) => {
-      if (typeof originalOnChange === "function") {
-        originalOnChange(value);
-      }
-    };
-
-    // Monitor selection changes to debug what's happening with cursor updates
-    editor.onChange = (value: Value) => {
-      // First call the original onChange to ensure proper behavior
-      safeOriginalOnChange(value);
-
-      // Then add our debug logging
-      if (editor.selection) {
-        // Accessing awareness here doesn't need to be a dependency
-        // since we're just reading values, not depending on them changing
-        const clientId = awareness.clientID;
-        const awarenessState = awareness.getLocalState();
-
-        console.log("📍 Selection changed:", {
-          selection: editor.selection,
-          clientId,
-          awarenessState,
-        });
-      }
-    };
-
-    // Cleanup when component is unmounted
-    return () => {
-      editor.onChange = originalOnChange;
-    };
-  }, [editor, mounted]); // Remove awareness from dependencies
   return (
     <Plate editor={editor}>
       <FixedToolbar className="flex justify-start gap-1 rounded-t-lg">
